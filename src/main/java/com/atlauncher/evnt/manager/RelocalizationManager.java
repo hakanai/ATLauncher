@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,34 +15,23 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.evnt.manager;
 
 import com.atlauncher.evnt.listener.RelocalizationListener;
+import com.gitlab.doomsdayrs.lib.rxswing.schedulers.SwingSchedulers;
 
-import javax.swing.SwingUtilities;
-import java.util.LinkedList;
-import java.util.List;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.subjects.PublishSubject;
 
 public final class RelocalizationManager {
-    private static final List<RelocalizationListener> listeners = new LinkedList<RelocalizationListener>();
+    private static final PublishSubject<Object> emission = PublishSubject.create();
 
-    public static synchronized void addListener(RelocalizationListener listener) {
-        listeners.add(listener);
-    }
-
-    public static synchronized void removeListener(RelocalizationListener listener) {
-        listeners.remove(listener);
+    // TODO: this leaks listeners as time goes on. Listeners aren't disposed of from non HierarchyPanel components
+    public static synchronized Disposable addListener(RelocalizationListener listener) {
+        return emission.observeOn(SwingSchedulers.edt()).subscribe((e) -> listener.onRelocalization());
     }
 
     public static synchronized void post() {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                for (RelocalizationListener listener : listeners) {
-                    listener.onRelocalization();
-                }
-            }
-        });
+        emission.onNext(0);
     }
 }

@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,74 +17,118 @@
  */
 package com.atlauncher.data;
 
-import com.atlauncher.App;
-import com.atlauncher.exceptions.InvalidMinecraftVersion;
+import com.atlauncher.data.curseforge.CurseForgeFile;
+import com.atlauncher.data.ftb.FTBPackVersionType;
+import com.atlauncher.data.minecraft.VersionManifestVersion;
+import com.atlauncher.data.minecraft.VersionManifestVersionType;
+import com.atlauncher.data.modrinth.ModrinthVersion;
 
 public class PackVersion {
-    private String version;
-    private String minecraft;
-    private String hash;
-    private MinecraftVersion minecraftVersion;
-    private boolean canUpdate = true;
-    private boolean isRecommended = true;
-    private boolean isDev;
-
-    public String getVersion() {
-        return this.version;
-    }
+    public String version;
+    public String hash;
+    public VersionManifestVersion minecraftVersion;
+    public boolean canUpdate = true;
+    public boolean isRecommended = true;
+    public boolean isDev = false;
+    public boolean hasLoader = false;
+    public boolean hasChoosableLoader = false;
+    public String loaderType;
+    public transient Integer _ftbId = null;
+    public transient FTBPackVersionType _ftbType = null;
+    public transient CurseForgeFile _curseForgeFile = null;
+    public transient ModrinthVersion _modrinthVersion = null;
+    public transient boolean _technicRecommended = false;
+    public transient boolean _technicLatest = false;
 
     public String getSafeVersion() {
         return this.version.replaceAll("[^A-Za-z0-9]", "");
     }
 
-    public void setMinecraftVesion() {
-        try {
-            this.minecraftVersion = App.settings.getMinecraftVersion(this.minecraft);
-        } catch (InvalidMinecraftVersion e) {
-            this.minecraftVersion = null;
-            App.settings.logStackTrace(e);
-        }
-    }
-
-    public MinecraftVersion getMinecraftVersion() {
-        if (this.minecraftVersion == null) {
-            this.setMinecraftVesion();
-        }
-        return this.minecraftVersion;
-    }
-
-    public String getHash() {
-        if (this.hash == null || !this.isDev) {
-            return null;
-        }
-        return this.hash;
-    }
-
-    public boolean canUpdate() {
-        return this.canUpdate;
-    }
-
-    public boolean isRecommended() {
-        return this.isRecommended;
-    }
-
-    public boolean isDev() {
-        return this.isDev;
-    }
-
+    @Override
     public String toString() {
-        return this.version + " (Minecraft " + this.getMinecraftVersion().getVersion() + ")";
+        String versionString = getVersionString();
+
+        if (_technicRecommended) {
+            return versionString + " (Recommended)";
+        }
+
+        if (_technicLatest) {
+            return versionString + " (Latest)";
+        }
+
+        if (_ftbType == FTBPackVersionType.BETA) {
+            return versionString + " (Beta)";
+        }
+
+        if (_ftbType == FTBPackVersionType.ALPHA) {
+            return versionString + " (Alpha)";
+        }
+
+        if (_curseForgeFile != null && _curseForgeFile.isBetaType()) {
+            return versionString + " (Beta)";
+        }
+
+        if (_curseForgeFile != null && _curseForgeFile.isAlphaType()) {
+            return versionString + " (Alpha)";
+        }
+
+        return versionString;
+    }
+
+    private String getVersionString() {
+        if (this.minecraftVersion == null || (this.minecraftVersion.id.equalsIgnoreCase(this.version)
+                && this.minecraftVersion.type != VersionManifestVersionType.SNAPSHOT
+                && this.minecraftVersion.type != VersionManifestVersionType.EXPERIMENT)) {
+            return this.version;
+        }
+
+        if (this.minecraftVersion.id.equalsIgnoreCase(this.version)
+                && this.minecraftVersion.type == VersionManifestVersionType.SNAPSHOT) {
+            return this.version + " (Snapshot)";
+        }
+
+        if (this.minecraftVersion.id.equalsIgnoreCase(this.version)
+                && this.minecraftVersion.type == VersionManifestVersionType.EXPERIMENT) {
+            return this.version + " (Experiment)";
+        }
+
+        if (this.minecraftVersion.type == VersionManifestVersionType.SNAPSHOT) {
+            return this.version + " (" + this.minecraftVersion.id + ")" + " (Snapshot)";
+        }
+
+        if (this.minecraftVersion.type == VersionManifestVersionType.EXPERIMENT) {
+            return this.version + " (" + this.minecraftVersion.id + ")" + " (Experiment)";
+        }
+
+        return this.version + " (" + this.minecraftVersion.id + ")";
     }
 
     public boolean versionMatches(String version) {
         return this.version.equalsIgnoreCase(version);
     }
 
+    public boolean versionMatches(Instance instance) {
+        if (instance.isCurseForgePack()) {
+            return versionMatches(instance.launcher.curseForgeFile.displayName);
+        }
+
+        return versionMatches(instance.launcher.version);
+    }
+
     public boolean hashMatches(String hash) {
         if (this.hash == null || !this.isDev) {
             return false;
         }
+
         return this.hash.equalsIgnoreCase(hash);
+    }
+
+    public boolean hasLoader() {
+        return this.hasLoader;
+    }
+
+    public boolean hasChoosableLoader() {
+        return this.hasChoosableLoader;
     }
 
 }

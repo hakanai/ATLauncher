@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,24 +17,46 @@
  */
 package com.atlauncher.data.json;
 
+import java.io.File;
+
+import com.atlauncher.FileSystem;
 import com.atlauncher.annot.Json;
 
 @Json
 public class Library {
-    private String url;
-    private String file;
-    private String server;
-    private String md5;
-    private DownloadType download;
-    private String depends;
-    private String dependsGroup;
+    public String url;
+    public String path;
+    public String file;
+    public String server;
+    public String md5;
+    public boolean force;
+    public DownloadType download;
+    public int filesize;
+    public String depends;
+    public String dependsGroup;
 
     public String getUrl() {
         return this.url;
     }
 
+    public boolean hasPath() {
+        return this.path != null;
+    }
+
+    public String getPath() {
+        return this.path;
+    }
+
     public String getFile() {
         return this.file;
+    }
+
+    public File getDownloadPath() {
+        if (this.path == null) {
+            return FileSystem.LIBRARIES.resolve(this.file).toFile();
+        }
+
+        return FileSystem.LIBRARIES.resolve(this.path).toFile();
     }
 
     public String getServer() {
@@ -43,6 +65,14 @@ public class Library {
 
     public String getMD5() {
         return this.md5;
+    }
+
+    public int getFilesize() {
+        return this.filesize;
+    }
+
+    public boolean shouldForce() {
+        return this.force;
     }
 
     public DownloadType getDownloadType() {

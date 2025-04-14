@@ -1,13 +1,39 @@
-# Ignore Everything
-/*
-/*/
+# Binaries
+.gradle/
+build/
 
-# Except These
-!/src/
-!/macapp/
-!/.gitignore
-!/LICENSE
-!/README.md
-!/pom.xml
-!/IntelliJ-Coding-Style.xml
-!/CHANGELOG.md
+# Runtime
+bin/
+dist/
+run/
+
+# IDE Config
+.settings/
+.classpath
+.project
+
+# Launcher Test Run Directory
+testLauncher/
+
+# OS X
+.DS_Store
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ACT
+.actrc
+.secrets
+
+# Other
+java_pid*.hprof
+*.log
+mockserver_keystore_*
+
+# crowdin config
+crowdin.yml

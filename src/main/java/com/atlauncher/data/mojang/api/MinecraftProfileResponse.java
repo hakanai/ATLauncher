@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,17 +17,25 @@
  */
 package com.atlauncher.data.mojang.api;
 
-import com.atlauncher.App;
-import com.atlauncher.annot.Json;
-
 import java.io.IOException;
 import java.util.List;
+
+import com.atlauncher.annot.Json;
+import com.atlauncher.managers.LogManager;
 
 @Json
 public class MinecraftProfileResponse {
     private String id;
     private String name;
     private List<UserPropertyRaw> properties;
+
+    public String getId() {
+        return this.id;
+    }
+
+    public String getName() {
+        return this.name;
+    }
 
     public boolean hasProperties() {
         return this.properties != null;
@@ -39,7 +47,7 @@ public class MinecraftProfileResponse {
                 try {
                     return property.parse();
                 } catch (IOException e) {
-                    App.settings.logStackTrace("Error parsing user property " + name + " for username " + name, e);
+                    LogManager.logStackTrace("Error parsing user property " + name + " for username " + name, e);
                 }
             }
         }

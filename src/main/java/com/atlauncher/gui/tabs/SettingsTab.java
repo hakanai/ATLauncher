@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,105 +17,156 @@
  */
 package com.atlauncher.gui.tabs;
 
-import com.atlauncher.App;
-import com.atlauncher.data.Language;
-import com.atlauncher.evnt.listener.RelocalizationListener;
-import com.atlauncher.evnt.manager.RelocalizationManager;
-import com.atlauncher.evnt.manager.SettingsManager;
-import com.atlauncher.gui.tabs.settings.GeneralSettingsTab;
-import com.atlauncher.gui.tabs.settings.JavaSettingsTab;
-import com.atlauncher.gui.tabs.settings.LoggingSettingsTab;
-import com.atlauncher.gui.tabs.settings.NetworkSettingsTab;
-import com.atlauncher.gui.tabs.settings.ToolsSettingsTab;
-
-import javax.swing.JButton;
-import javax.swing.JPanel;
-import javax.swing.JTabbedPane;
 import java.awt.BorderLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.util.Arrays;
 import java.util.List;
 
-@SuppressWarnings("serial")
-public class SettingsTab extends JPanel implements Tab, RelocalizationListener {
+import javax.annotation.Nullable;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
 
-    private final GeneralSettingsTab generalSettingsTab = new GeneralSettingsTab();
-    private final JavaSettingsTab javaSettingsTab = new JavaSettingsTab();
-    private final NetworkSettingsTab networkSettingsTab = new NetworkSettingsTab();
-    private final LoggingSettingsTab loggingSettingsTab = new LoggingSettingsTab();
-    private final ToolsSettingsTab toolsSettingsTab = new ToolsSettingsTab();
-    private final List<Tab> tabs = Arrays.asList(new Tab[]{this.generalSettingsTab, this.javaSettingsTab, this
-            .networkSettingsTab, this.loggingSettingsTab, this.toolsSettingsTab});
+import org.mini2Dx.gettext.GetText;
+
+import com.atlauncher.App;
+import com.atlauncher.gui.panels.HierarchyPanel;
+import com.atlauncher.gui.tabs.settings.BackupsSettingsTab;
+import com.atlauncher.gui.tabs.settings.CommandsSettingsTab;
+import com.atlauncher.gui.tabs.settings.GeneralSettingsTab;
+import com.atlauncher.gui.tabs.settings.JavaSettingsTab;
+import com.atlauncher.gui.tabs.settings.LoggingSettingsTab;
+import com.atlauncher.gui.tabs.settings.ModsSettingsTab;
+import com.atlauncher.gui.tabs.settings.NetworkSettingsTab;
+import com.atlauncher.network.Analytics;
+import com.atlauncher.viewmodel.impl.settings.BackupsSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.CommandsSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.GeneralSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.JavaSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.LoggingSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.ModsSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.NetworkSettingsViewModel;
+import com.atlauncher.viewmodel.impl.settings.SettingsViewModel;
+
+public class SettingsTab extends HierarchyPanel implements Tab {
+    @Nullable
     private JTabbedPane tabbedPane;
-    private JPanel bottomPanel;
-    private JButton saveButton = new JButton(Language.INSTANCE.localize("common.save"));
+    @Nullable
+    private JButton saveButton;
+
+    private SettingsViewModel viewModel;
+
+    // We maintain the state at the top level for all tabs
+
+    private BackupsSettingsViewModel backupSettingsViewModel;
+    private CommandsSettingsViewModel commandsSettingsViewModel;
+    private GeneralSettingsViewModel generalSettingsViewModel;
+    private JavaSettingsViewModel javaSettingsViewModel;
+    private LoggingSettingsViewModel loggingSettingsViewModel;
+    private ModsSettingsViewModel modsSettingsViewModel;
+    private NetworkSettingsViewModel networkSettingsViewModel;
+
+    @Nullable
+    private GeneralSettingsTab generalSettingsTab;
+    @Nullable
+    private ModsSettingsTab modsSettingsTab;
+    @Nullable
+    private JavaSettingsTab javaSettingsTab;
+    @Nullable
+    private NetworkSettingsTab networkSettingsTab;
+    @Nullable
+    private LoggingSettingsTab loggingSettingsTab;
+    @Nullable
+    private BackupsSettingsTab backupsSettingsTab;
+    @Nullable
+    private CommandsSettingsTab commandSettingsTab;
+    @Nullable
+    private List<Tab> tabs;
+
+    private int selectedTabIndex = 0;
 
     public SettingsTab() {
-        RelocalizationManager.addListener(this);
         setLayout(new BorderLayout());
+    }
 
+    @Override
+    protected void createViewModel() {
+        viewModel = new SettingsViewModel();
+
+        backupSettingsViewModel = new BackupsSettingsViewModel();
+        commandsSettingsViewModel = new CommandsSettingsViewModel();
+        generalSettingsViewModel = new GeneralSettingsViewModel();
+        javaSettingsViewModel = new JavaSettingsViewModel();
+        loggingSettingsViewModel = new LoggingSettingsViewModel();
+        modsSettingsViewModel = new ModsSettingsViewModel();
+        networkSettingsViewModel = new NetworkSettingsViewModel();
+    }
+
+    @SuppressWarnings("null")
+    @Override
+    protected void onShow() {
+        saveButton = new JButton(GetText.tr("Save"));
         tabbedPane = new JTabbedPane(JTabbedPane.TOP);
-        tabbedPane.setBackground(App.THEME.getBaseColor());
 
-        tabbedPane.setFont(App.THEME.getDefaultFont().deriveFont(17.0F));
+        tabbedPane.setFont(App.THEME.getNormalFont().deriveFont(17.0F));
+
+        generalSettingsTab = new GeneralSettingsTab(generalSettingsViewModel);
+        modsSettingsTab = new ModsSettingsTab(modsSettingsViewModel);
+        javaSettingsTab = new JavaSettingsTab(javaSettingsViewModel);
+        networkSettingsTab = new NetworkSettingsTab(networkSettingsViewModel);
+        loggingSettingsTab = new LoggingSettingsTab(loggingSettingsViewModel);
+        backupsSettingsTab = new BackupsSettingsTab(backupSettingsViewModel);
+        commandSettingsTab = new CommandsSettingsTab(commandsSettingsViewModel);
+        tabs = Arrays.asList(
+                new Tab[] { this.generalSettingsTab, this.modsSettingsTab, this.javaSettingsTab,
+                        this.networkSettingsTab,
+                        this.loggingSettingsTab, this.backupsSettingsTab, this.commandSettingsTab });
+
         for (Tab tab : this.tabs) {
             this.tabbedPane.addTab(tab.getTitle(), (JPanel) tab);
         }
-        tabbedPane.setBackground(App.THEME.getTabBackgroundColor());
         tabbedPane.setOpaque(true);
+        tabbedPane.setSelectedIndex(selectedTabIndex);
 
         add(tabbedPane, BorderLayout.CENTER);
 
-        bottomPanel = new JPanel();
+        JPanel bottomPanel = new JPanel();
         bottomPanel.add(saveButton);
 
         add(bottomPanel, BorderLayout.SOUTH);
-        saveButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent arg0) {
-                if (javaSettingsTab.isValidJavaPath() && javaSettingsTab.isValidJavaParamaters() &&
-                        networkSettingsTab.isValidConcurrentConnections() && networkSettingsTab.isValidProxyPort() &&
-                        networkSettingsTab.canConnectWithProxy() && toolsSettingsTab.isValidServerCheckerWait()) {
-                    boolean reloadTheme = generalSettingsTab.needToReloadTheme();
-                    boolean reloadLocalizationTable = generalSettingsTab.reloadLocalizationTable();
-                    boolean reloadPacksPanel = generalSettingsTab.needToReloadPacksPanel();
-                    boolean restartServerChecker = toolsSettingsTab.needToRestartServerChecker();
-                    generalSettingsTab.save();
-                    javaSettingsTab.save();
-                    networkSettingsTab.save();
-                    loggingSettingsTab.save();
-                    toolsSettingsTab.save();
-                    App.settings.saveProperties();
-                    SettingsManager.post();
-                    if (reloadLocalizationTable) {
-                        RelocalizationManager.post();
-                    }
-                    if (reloadPacksPanel) {
-                        App.settings.reloadPacksPanel();
-                    }
-                    if (restartServerChecker) {
-                        App.settings.startCheckingServers();
-                    }
-                    if (reloadTheme) {
-                        App.settings.restartLauncher();
-                    }
-                    App.TOASTER.pop("Settings Saved");
-                }
-            }
+        addDisposable(viewModel.getSaveEnabled().subscribe(saveButton::setEnabled));
+        saveButton.addActionListener(arg0 -> viewModel.save());
+
+        tabbedPane.addChangeListener(e -> {
+            selectedTabIndex = tabbedPane.getSelectedIndex();
+            Analytics.sendScreenView(
+                    ((Tab) tabbedPane.getSelectedComponent()).getAnalyticsScreenViewName() + " Settings");
         });
     }
 
     @Override
-    public String getTitle() {
-        return Language.INSTANCE.localize("tabs.settings");
+    protected void onDestroy() {
+        removeAll();
+        tabbedPane = null;
+        saveButton = null;
+
+        generalSettingsTab = null;
+        modsSettingsTab = null;
+        javaSettingsTab = null;
+        networkSettingsTab = null;
+        loggingSettingsTab = null;
+        backupsSettingsTab = null;
+        commandSettingsTab = null;
+        tabs = null;
     }
 
     @Override
-    public void onRelocalization() {
-        for (int i = 0; i < this.tabbedPane.getTabCount(); i++) {
-            this.tabbedPane.setTitleAt(i, this.tabs.get(i).getTitle());
-        }
-        this.saveButton.setText(Language.INSTANCE.localize("common.save"));
+    public String getTitle() {
+        return GetText.tr("Settings");
     }
 
+    @Override
+    public String getAnalyticsScreenViewName() {
+        // since this is the default, this is the main view name
+        return "General Settings";
+    }
 }

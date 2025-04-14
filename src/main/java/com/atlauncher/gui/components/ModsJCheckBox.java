@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,126 +17,98 @@
  */
 package com.atlauncher.gui.components;
 
-import com.atlauncher.App;
-import com.atlauncher.data.DisableableMod;
-import com.atlauncher.data.Mod;
-import com.atlauncher.gui.CustomLineBorder;
-import com.atlauncher.gui.dialogs.EditModsDialog;
-import com.atlauncher.gui.dialogs.JsonModsChooser;
-import com.atlauncher.gui.dialogs.ModsChooser;
-import com.atlauncher.utils.Utils;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 import javax.swing.JCheckBox;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JToolTip;
-import javax.swing.border.Border;
+
+import org.mini2Dx.gettext.GetText;
+
+import com.atlauncher.builders.HTMLBuilder;
+import com.atlauncher.data.DisableableMod;
+import com.atlauncher.data.ModPlatform;
+import com.atlauncher.data.Type;
+import com.atlauncher.data.json.Mod;
+import com.atlauncher.data.modrinth.ModrinthDonationUrl;
+import com.atlauncher.data.modrinth.ModrinthProject;
+import com.atlauncher.gui.HoverLineBorder;
+import com.atlauncher.gui.dialogs.EditModsDialog;
+import com.atlauncher.gui.dialogs.ModsChooser;
+import com.atlauncher.managers.DialogManager;
+import com.atlauncher.utils.OS;
+import com.atlauncher.utils.Utils;
 
 /**
- * This class extends {@link JCheckBox} and overrides the need to use JCheckBox in the {@link ModsChooser}, {@link
- * JsonModsChooser} and {@link EditModsDialog}, providing specific functionality for those two components. Mainly
- * providing a hover tooltip for a mods description, as well as giving pack developers a way to colour mod's names.
- * Alternatively can be used to display categories.
+ * This class extends {@link JCheckBox} and overrides the need to use JCheckBox
+ * in the {@link ModsChooser}, {@link ModsChooser} and {@link EditModsDialog},
+ * providing specific functionality for those two components. Mainly providing a
+ * hover tooltip for a mods description, as well as giving pack developers a way
+ * to colour mod's names.
  */
 public class ModsJCheckBox extends JCheckBox {
     /**
-     * Auto generated serial.
+     * The mod this object will use to display it's data. Will be type {@link Mod},
+     * {@link com.atlauncher.data.json.Mod} or {@link DisableableMod}.
      */
-    private static final long serialVersionUID = -4560260483416099547L;
+    private final Object mod;
 
-    /**
-     * The mod this object will use to display it's data. Will be type {@link Mod}, {@link com.atlauncher.data.json.Mod}
-     * or {@link DisableableMod}.
-     */
-    private Object mod;
-
-    /**
-     * If this object is classed as a category or not.
-     */
-    private boolean isCategory = false;
-
-    /**
-     * The name of the category this object represents, if any.
-     */
-    private String categoryName = null;
-
-    /**
-     * Static object for the {@link Border} to show around the tooltips for mods with descriptions.
-     */
-    private static final Border HOVER_BORDER = new CustomLineBorder(5, App.THEME.getHoverBorderColor(), 2);
-
-    /**
-     * Constructor for use in the {@link ModsChooser} dialog.
-     *
-     * @param mod The mod this object is displaying data for
-     */
-    public ModsJCheckBox(Mod mod) {
-        super(mod.getName());
-        if (mod.hasColour()) {
-            setForeground(mod.getColour());
-        }
-        this.mod = mod;
-        if (mod.getDescription() != null && !mod.getDescription().isEmpty()) {
-            this.setToolTipText("<html>" + Utils.splitMultilinedString(mod.getDescription(), 100, "<br/>") + "</html>");
-        }
-    }
+    private final EditModsDialog dialog;
 
     /**
      * Constructor for use in the {@link ModsChooser} dialog with new JSON format.
      *
-     * @param mod The mod this object is displaying data for
+     * @param mod
+     *            The mod this object is displaying data for
      */
-    public ModsJCheckBox(com.atlauncher.data.json.Mod mod) {
+    public ModsJCheckBox(Mod mod, EditModsDialog dialog) {
         super(mod.getName());
+
         if (mod.hasColour() && mod.getCompiledColour() != null) {
             setForeground(mod.getCompiledColour());
         }
+
         this.mod = mod;
+        this.dialog = dialog;
+
         if (mod.hasDescription()) {
-            this.setToolTipText("<html>" + Utils.splitMultilinedString(mod.getDescription(), 100, "<br/>") + "</html>");
+            this.setToolTipText(new HTMLBuilder().text(mod.getDescription()).split(100).build());
         }
+    }
+
+    public ModsJCheckBox(Mod mod) {
+        this(mod, null);
     }
 
     /**
      * Constructor for use in the {@link EditModsDialog} dialog.
      *
-     * @param mod The mod this object is displaying data for
+     * @param mod
+     *            The mod this object is displaying data for
      */
-    public ModsJCheckBox(DisableableMod mod) {
-        super(mod.getName());
+    public ModsJCheckBox(DisableableMod mod, EditModsDialog dialog) {
+        super(mod.type == Type.plugins ? "[Plugin] " + mod.getName() : mod.getName());
+
         if (mod.hasColour()) {
             setForeground(mod.getColour());
         }
+
         this.mod = mod;
+        this.dialog = dialog;
+
         if (mod.getDescription() != null && !mod.getDescription().isEmpty()) {
-            this.setToolTipText(mod.getDescription());
+            this.setToolTipText(new HTMLBuilder().text(mod.getDescription()).split(100).build());
+        }
+
+        if (this.dialog != null) {
+            setupContextMenu();
         }
     }
 
-    /**
-     * Constructor used for displaying categories in the {@link ModsChooser} dialog.
-     *
-     * @param categoryName The name of the category to show
-     */
-    public ModsJCheckBox(String categoryName) {
-        super(categoryName);
-        this.isCategory = true;
-    }
-
-    /**
-     * Checks if this object is a category or not.
-     *
-     * @return true if this object represents a category
-     */
-    public boolean isCategory() {
-        return this.isCategory;
-    }
-
-    /**
-     * Gets the categories name.
-     *
-     * @return The categories name
-     */
-    public String getCategoryName() {
-        return this.categoryName;
+    public ModsJCheckBox(DisableableMod mod) {
+        this(mod, null);
     }
 
     /**
@@ -149,15 +121,6 @@ public class ModsJCheckBox extends JCheckBox {
     }
 
     /**
-     * Gets the {@link com.atlauncher.data.json.Mod} object associated with this.
-     *
-     * @return The mod for this object
-     */
-    public com.atlauncher.data.json.Mod getJsonMod() {
-        return (com.atlauncher.data.json.Mod) this.mod;
-    }
-
-    /**
      * Gets the {@link DisableableMod} object associated with this.
      *
      * @return The mod for this object
@@ -166,10 +129,200 @@ public class ModsJCheckBox extends JCheckBox {
         return (DisableableMod) this.mod;
     }
 
+    private void setupContextMenu() {
+        JPopupMenu contextMenu = new JPopupMenu();
+
+        JMenuItem fileItem = new JMenuItem(getDisableableMod().file);
+        fileItem.setEnabled(false);
+        contextMenu.add(fileItem);
+        contextMenu.add(new JPopupMenu.Separator());
+
+        if (getDisableableMod().hasFullCurseForgeInformation()) {
+            // #. {0} is the platform to open the website for (e.g. CurseForge/Modrinth)
+            JMenuItem openOnCurseForge = new JMenuItem(GetText.tr("Open On {0}", "CurseForge"));
+            openOnCurseForge
+                    .addActionListener(e -> OS.openWebBrowser(getDisableableMod().curseForgeProject.getWebsiteUrl()));
+            contextMenu.add(openOnCurseForge);
+
+            contextMenu.add(new JPopupMenu.Separator());
+        }
+
+        if (getDisableableMod().isFromModrinth()) {
+            ModrinthProject modrinthMod = getDisableableMod().modrinthProject;
+
+            // #. {0} is the platform to open the website for (e.g. CurseForge/Modrinth)
+            JMenuItem openOnModrinth = new JMenuItem(GetText.tr("Open On {0}", "Modrinth"));
+            openOnModrinth.addActionListener(
+                    e -> OS.openWebBrowser(String.format("https://modrinth.com/mod/%s", modrinthMod.slug)));
+            contextMenu.add(openOnModrinth);
+
+            if (modrinthMod.discordUrl != null) {
+                JMenuItem openDiscord = new JMenuItem(GetText.tr("Open Discord"));
+                openDiscord.addActionListener(e -> OS.openWebBrowser(modrinthMod.discordUrl));
+                contextMenu.add(openDiscord);
+            }
+
+            if (modrinthMod.issuesUrl != null) {
+                JMenuItem openIssues = new JMenuItem(GetText.tr("Open Issues"));
+                openIssues.addActionListener(e -> OS.openWebBrowser(modrinthMod.issuesUrl));
+                contextMenu.add(openIssues);
+            }
+
+            if (modrinthMod.sourceUrl != null) {
+                JMenuItem openSourceUrl = new JMenuItem(GetText.tr("Open Source Url"));
+                openSourceUrl.addActionListener(e -> OS.openWebBrowser(modrinthMod.sourceUrl));
+                contextMenu.add(openSourceUrl);
+            }
+
+            if (modrinthMod.wikiUrl != null) {
+                JMenuItem openWiki = new JMenuItem(GetText.tr("Open Wiki"));
+                openWiki.addActionListener(e -> OS.openWebBrowser(modrinthMod.wikiUrl));
+                contextMenu.add(openWiki);
+            }
+
+            contextMenu.add(new JPopupMenu.Separator());
+
+            if (modrinthMod.donationUrls != null && !modrinthMod.donationUrls.isEmpty()) {
+                for (ModrinthDonationUrl donation : modrinthMod.donationUrls) {
+                    // #. {0} is the name of the platform used for donations (Patreon, paypal, etc)
+                    JMenuItem openDonationLink = new JMenuItem(GetText.tr("Donate ({0})", donation.platform));
+                    openDonationLink.addActionListener(e -> OS.openWebBrowser(donation.url));
+                    contextMenu.add(openDonationLink);
+                }
+
+                contextMenu.add(new JPopupMenu.Separator());
+            }
+        }
+
+        JMenuItem enableDisableButton = new JMenuItem(
+                getDisableableMod().disabled ? GetText.tr("Enable") : GetText.tr("Disable"));
+        enableDisableButton.addActionListener(e -> {
+            if (getDisableableMod().disabled) {
+                getDisableableMod().enable(dialog.instanceOrServer);
+            } else {
+                getDisableableMod().disable(dialog.instanceOrServer);
+            }
+
+            dialog.reloadPanels();
+        });
+        contextMenu.add(enableDisableButton);
+
+        contextMenu.add(new JPopupMenu.Separator());
+
+        JMenuItem showInFileExplorer = new JMenuItem(GetText.tr("Show In File Explorer"));
+        showInFileExplorer.addActionListener(e -> {
+            if (getDisableableMod().disabled) {
+                OS.openFileExplorer(getDisableableMod().getDisabledFile(dialog.instanceOrServer).toPath());
+            } else {
+                OS.openFileExplorer(getDisableableMod().getFile(dialog.instanceOrServer).toPath());
+            }
+        });
+        contextMenu.add(showInFileExplorer);
+
+        contextMenu.add(new JPopupMenu.Separator());
+
+        JMenuItem remove = new JMenuItem(GetText.tr("Remove"));
+        remove.addActionListener(e -> {
+            dialog.instanceOrServer.getMods().remove(getDisableableMod());
+            Utils.delete(
+                    (getDisableableMod().isDisabled() ? getDisableableMod().getDisabledFile(dialog.instanceOrServer)
+                            : getDisableableMod().getFile(dialog.instanceOrServer)));
+
+            dialog.reloadPanels();
+        });
+        contextMenu.add(remove);
+
+        if (getDisableableMod().isFromCurseForge() && getDisableableMod().isFromModrinth()) {
+            contextMenu.add(new JPopupMenu.Separator());
+
+            // #. {0} is the platform to reinstall the mod from (e.g. CurseForge/Modrinth)
+            JMenuItem reinstallFromCurseForge = new JMenuItem(GetText.tr("Reinstall From {0}", "CurseForge"));
+            reinstallFromCurseForge.addActionListener(e -> {
+                getDisableableMod().reinstall(dialog, dialog.instanceOrServer, ModPlatform.CURSEFORGE);
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(reinstallFromCurseForge);
+
+            // #. {0} is the platform to reinstall the mod from (e.g. CurseForge/Modrinth)
+            JMenuItem reinstallFromModrinth = new JMenuItem(GetText.tr("Reinstall From {0}", "Modrinth"));
+            reinstallFromModrinth.addActionListener(e -> {
+                getDisableableMod().reinstall(dialog, dialog.instanceOrServer, ModPlatform.MODRINTH);
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(reinstallFromModrinth);
+
+            contextMenu.add(new JPopupMenu.Separator());
+
+            // #. {0} is the platform to check for updates from (e.g. CurseForge/Modrinth)
+            JMenuItem checkForUpdatesOnCurseForge = new JMenuItem(GetText.tr("Check For Updates On {0}", "CurseForge"));
+            checkForUpdatesOnCurseForge.addActionListener(e -> {
+                boolean updated = getDisableableMod().checkForUpdate(dialog, dialog.instanceOrServer,
+                        ModPlatform.CURSEFORGE);
+
+                if (!updated) {
+                    DialogManager.okDialog().setTitle(GetText.tr("No Updates Found"))
+                            .setContent(GetText.tr("No updates were found.")).show();
+                }
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(checkForUpdatesOnCurseForge);
+
+            // #. {0} is the platform to check for updates from (e.g. CurseForge/Modrinth)
+            JMenuItem checkForUpdatesOnModrinth = new JMenuItem(GetText.tr("Check For Updates On {0}", "Modrinth"));
+            checkForUpdatesOnModrinth.addActionListener(e -> {
+                boolean updated = getDisableableMod().checkForUpdate(dialog, dialog.instanceOrServer,
+                        ModPlatform.MODRINTH);
+
+                if (!updated) {
+                    DialogManager.okDialog().setTitle(GetText.tr("No Updates Found"))
+                            .setContent(GetText.tr("No updates were found.")).show();
+                }
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(checkForUpdatesOnModrinth);
+        } else if (getDisableableMod().isFromCurseForge() || getDisableableMod().isFromModrinth()) {
+            contextMenu.add(new JPopupMenu.Separator());
+
+            JMenuItem reinstall = new JMenuItem(GetText.tr("Reinstall"));
+            reinstall.addActionListener(e -> {
+                getDisableableMod().reinstall(dialog, dialog.instanceOrServer);
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(reinstall);
+
+            JMenuItem checkForUpdates = new JMenuItem(GetText.tr("Check For Updates"));
+            checkForUpdates.addActionListener(e -> {
+                boolean updated = getDisableableMod().checkForUpdate(dialog, dialog.instanceOrServer);
+
+                if (!updated) {
+                    DialogManager.okDialog().setTitle(GetText.tr("No Updates Found"))
+                            .setContent(GetText.tr("No updates were found.")).show();
+                }
+
+                dialog.reloadPanels();
+            });
+            contextMenu.add(checkForUpdates);
+        }
+
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.getButton() == MouseEvent.BUTTON3) {
+                    contextMenu.show(ModsJCheckBox.this, e.getX(), e.getY());
+                }
+            }
+        });
+    }
+
     @Override
     public JToolTip createToolTip() {
         JToolTip tip = super.createToolTip();
-        tip.setBorder(HOVER_BORDER);
+        tip.setBorder(new HoverLineBorder());
         return tip;
     }
 

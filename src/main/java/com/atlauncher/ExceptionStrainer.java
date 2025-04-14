@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,18 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher;
+
+import com.atlauncher.managers.LogManager;
 
 public final class ExceptionStrainer implements Thread.UncaughtExceptionHandler {
     @Override
     public void uncaughtException(Thread t, Throwable e) {
-        e.printStackTrace();
-        LogManager.error(e.getMessage());
-        for (StackTraceElement element : e.getStackTrace()) {
-            if (element.toString() != null) {
-                LogManager.error(element.toString());
-            }
-        }
+        LogManager.logStackTrace(e);
     }
 }

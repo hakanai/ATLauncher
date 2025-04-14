@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,55 +17,133 @@
  */
 package com.atlauncher.gui.card;
 
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.Image;
+import java.awt.event.ActionListener;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JSplitPane;
+import javax.swing.JTextPane;
+import javax.swing.border.TitledBorder;
+
+import org.mini2Dx.gettext.GetText;
+
 import com.atlauncher.App;
-import com.atlauncher.data.Language;
+import com.atlauncher.constants.UIConstants;
+import com.atlauncher.evnt.listener.RelocalizationListener;
+import com.atlauncher.evnt.manager.RelocalizationManager;
 import com.atlauncher.gui.components.ImagePanel;
 import com.atlauncher.utils.Utils;
 
-import javax.swing.BorderFactory;
-import javax.swing.JPanel;
-import javax.swing.JSplitPane;
-import javax.swing.JTextArea;
-import javax.swing.border.TitledBorder;
-import java.awt.BorderLayout;
-import java.awt.Font;
-import java.awt.Image;
-import java.io.File;
-
 /**
- * Class for displaying packs in the Pack Tab
- *
- * @author Ryan
+ * Class for displaying packs in the Pack Tab.
  */
-public class NilCard extends JPanel {
-    private static final Image defaultImage = Utils.getIconImage(new File(App.settings.getImagesDir(), "defaultimage" +
-            ".png")).getImage();
+public class NilCard extends JPanel implements RelocalizationListener {
+    private static final Image defaultImage = Utils.getIconImage("/assets/image/default-image.png").getImage();
 
-    private final JTextArea error = new JTextArea();
-    private final JSplitPane splitter = new JSplitPane();
+    private final JPanel column = new JPanel();
+    private final JPanel row = new JPanel();
+    private final JTextPane errorMessage = new JTextPane();
 
-    public NilCard(String message) {
+    public NilCard(@Nonnull String message) {
+        this(message, null);
+    }
+
+    public NilCard(@Nonnull String message, @Nullable Action[] actions) {
         super(new BorderLayout());
+        RelocalizationManager.addListener(this);
 
-        if (Utils.isMac()) {
-            this.setBorder(new TitledBorder(null, Language.INSTANCE.localize("common.nothingtoshow"), TitledBorder
-                    .DEFAULT_JUSTIFICATION, TitledBorder.DEFAULT_POSITION, new Font("SansSerif", Font.BOLD, 14)));
-        } else {
-            this.setBorder(new TitledBorder(null, Language.INSTANCE.localize("common.nothingtoshow"), TitledBorder
-                    .DEFAULT_JUSTIFICATION, TitledBorder.DEFAULT_POSITION, new Font("SansSerif", Font.BOLD, 15)));
+        this.setBorder(new TitledBorder(null, GetText.tr("Nothing To Show"), TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION, App.THEME.getBoldFont().deriveFont(15f)));
+
+        column.setLayout(new BoxLayout(column, BoxLayout.PAGE_AXIS));
+
+        this.errorMessage.setContentType("text/html");
+        this.errorMessage.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5));
+        this.errorMessage.setEditable(false);
+        this.errorMessage.setHighlighter(null);
+        this.errorMessage.setText(message);
+        column.add(errorMessage);
+
+        row.setLayout(new FlowLayout());
+        setActions(actions, false);
+        column.add(row);
+
+        JSplitPane splitter = new JSplitPane();
+        splitter.setEnabled(false);
+        splitter.setLeftComponent(new ImagePanel(() -> defaultImage));
+        splitter.setRightComponent(this.column);
+        splitter.setBorder(BorderFactory.createEmptyBorder());
+
+        this.add(splitter, BorderLayout.CENTER);
+    }
+
+    public void setActions(@Nullable Action[] actions) {
+        setActions(actions, true);
+    }
+
+    private void setActions(@Nullable Action[] actions, boolean revalidate) {
+        if (actions != null)
+            for (Action action : actions) {
+                JButton button = new JButton(action.name);
+                button.addActionListener(action.onClicked);
+                row.add(button);
+            }
+
+        if (revalidate) {
+            revalidate();
+            repaint();
+        }
+    }
+
+    public void setMessage(String message) {
+        errorMessage.setText(message);
+    }
+
+    @Override
+    public void onRelocalization() {
+        TitledBorder border = (TitledBorder) this.getBorder();
+        border.setTitle(GetText.tr("Nothing To Show"));
+        border.setTitleFont(App.THEME.getBoldFont().deriveFont(15f));
+    }
+
+    public static class Action {
+        public final String name;
+        public final ActionListener onClicked;
+
+        public Action(String name, ActionListener onClicked) {
+            this.name = name;
+            this.onClicked = onClicked;
         }
 
-        this.error.setBorder(BorderFactory.createEmptyBorder());
-        this.error.setEditable(false);
-        this.error.setHighlighter(null);
-        this.error.setLineWrap(true);
-        this.error.setWrapStyleWord(true);
-        this.error.setText(message);
+        public static Action createCreatePackAction() {
+            return new NilCard.Action(
+                    GetText.tr("Create Pack"),
+                    e -> App.navigate(UIConstants.LAUNCHER_CREATE_PACK_TAB));
+        }
 
-        this.splitter.setEnabled(false);
-        this.splitter.setLeftComponent(new ImagePanel(defaultImage));
-        this.splitter.setRightComponent(this.error);
+        public static Action createDownloadPackAction() {
+            return new NilCard.Action(
+                    GetText.tr("Download Pack"),
+                    e -> App.navigate(UIConstants.LAUNCHER_PACKS_TAB));
+        }
 
-        this.add(this.splitter, BorderLayout.CENTER);
+        public static Action createCreateServerAction() {
+            return new NilCard.Action(
+                    GetText.tr("Create Server"),
+                    e -> App.navigate(UIConstants.LAUNCHER_CREATE_PACK_TAB));
+        }
+
+        public static Action createDownloadServerAction() {
+            return new NilCard.Action(
+                    GetText.tr("Download Server"),
+                    e -> App.navigate(UIConstants.LAUNCHER_PACKS_TAB));
+        }
     }
 }

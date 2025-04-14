@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,130 +17,292 @@
  */
 package com.atlauncher.mclauncher;
 
-import com.atlauncher.App;
-import com.atlauncher.LogManager;
-import com.atlauncher.data.Account;
-import com.atlauncher.data.Instance;
-import com.atlauncher.data.LoginResponse;
-import com.atlauncher.data.mojang.PropertyMapSerializer;
-import com.atlauncher.utils.Utils;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.mojang.authlib.properties.PropertyMap;
-import com.mojang.util.UUIDTypeAdapter;
-
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
+
+import com.atlauncher.App;
+import com.atlauncher.FileSystem;
+import com.atlauncher.constants.Constants;
+import com.atlauncher.data.DisableableMod;
+import com.atlauncher.data.Instance;
+import com.atlauncher.data.MicrosoftAccount;
+import com.atlauncher.data.QuickPlayOption;
+import com.atlauncher.data.json.QuickPlay;
+import com.atlauncher.data.minecraft.Library;
+import com.atlauncher.data.minecraft.LoggingClient;
+import com.atlauncher.managers.LWJGLManager;
+import com.atlauncher.managers.LogManager;
+import com.atlauncher.network.ErrorReporting;
+import com.atlauncher.utils.Java;
+import com.atlauncher.utils.OS;
+import com.atlauncher.utils.Pair;
+import com.atlauncher.utils.Utils;
 
 public class MCLauncher {
+    public static final List<String> IGNORED_ARGUMENTS = Arrays.asList("--clientId", "${clientid}", "--xuid",
+            "${auth_xuid}");
 
-    public static Process launch(Account account, Instance instance, LoginResponse response) throws IOException {
+    public static Process launch(MicrosoftAccount account, Instance instance, Path nativesTempDir,
+            Path lwjglNativesTempDir,
+            String wrapperCommand, String username) throws Exception {
+        return launch(account, instance, null, nativesTempDir.toFile(), lwjglNativesTempDir, wrapperCommand, username);
+    }
+
+    private static Process launch(MicrosoftAccount account, Instance instance, String props, File nativesDir,
+            Path lwjglNativesTempDir, String wrapperCommand, String username) throws Exception {
+        List<String> arguments = getArguments(account, instance, props, nativesDir.getAbsolutePath(),
+                lwjglNativesTempDir, username);
+        if (wrapperCommand != null && !wrapperCommand.isEmpty()) {
+            arguments = wrapArguments(wrapperCommand, arguments);
+        }
+
+        logInstanceInformation(instance);
+
+        LogManager.info("Launching Minecraft with the following arguments (user related stuff has been removed): "
+                + censorArguments(arguments, account, props, username));
+        ProcessBuilder processBuilder = new ProcessBuilder(arguments);
+        processBuilder.directory(instance.getRootDirectory());
+        processBuilder.redirectErrorStream(true);
+        processBuilder.environment().remove("_JAVA_OPTIONS"); // Remove any _JAVA_OPTIONS, they are a PAIN
+        processBuilder.environment().putAll(getEnvironmentVariables(instance)); // Add in any environment variables
+        return processBuilder.start();
+    }
+
+    private static void logInstanceInformation(Instance instance) {
+        try {
+            if (instance.launcher.loaderVersion != null) {
+                LogManager.info(String.format("Loader: %s %s", instance.launcher.loaderVersion.type,
+                        instance.launcher.loaderVersion.version));
+            }
+
+            if (instance.hasDisabledJavaRuntime()) {
+                LogManager.warn(
+                        "The Use Java Provided By Minecraft option has been disabled. If you're experiencing crashes, please enable this option.");
+            }
+
+            if (instance.ROOT.resolve("mods").toFile().listFiles().length != 0) {
+                LogManager.info("Mods:");
+
+                try (Stream<Path> stream = Files.walk(instance.ROOT.resolve("mods"))) {
+                    stream
+                            .filter(file -> Files.isRegularFile(file)
+                                    && (file.toString().endsWith(".jar") || file.toString().endsWith(".zip")))
+                            .forEach(file -> {
+                                String filename = file.toString().replace(instance.ROOT.resolve("mods").toString(), "");
+                                DisableableMod mod = instance.launcher.mods.parallelStream()
+                                        .filter(m -> filename.contains(m.file)).findFirst().orElse(null);
+
+                                boolean isCustomAdded = filename.lastIndexOf(File.separator) == 0
+                                        && (mod == null || mod.userAdded);
+
+                                LogManager.info(String.format(" - %s%s", filename, isCustomAdded ? " (Added)" : ""));
+                            });
+                }
+            }
+
+            if (instance.launcher.mods.stream().anyMatch(m -> m.skipped)) {
+                instance.launcher.mods.stream().filter(m -> m.skipped).forEach(m -> LogManager.warn(String.format(
+                        "Mod %s (%s) was skipped from downloading during instance installation", m.name, m.file)));
+            }
+
+            if (instance.shouldUseLegacyLaunch() && Optional.ofNullable(instance.launcher.disableLegacyLaunching)
+                    .orElse(App.settings.disableLegacyLaunching)) {
+                LogManager.warn(
+                        "Legacy launching disabled. If you have issues with Minecraft, please enable this setting again");
+            }
+        } catch (IOException ignored) {
+            // ignored
+        }
+    }
+
+    private static List<String> wrapArguments(String wrapperCommand, List<String> args) {
+        List<String> wrapArgs = new ArrayList<>(Arrays.asList(wrapperCommand.trim().split("\\s+")));
+
+        // wrapper not set
+        if (wrapArgs.isEmpty()) {
+            return args;
+        }
+
+        String wrapArgsKey = "%command%";
+        int commandIndex = wrapArgs.indexOf(wrapArgsKey);
+        if (commandIndex >= 0) {
+            wrapArgs.remove(commandIndex);
+            wrapArgs.addAll(commandIndex, args);
+            return wrapArgs;
+        }
+
+        // make args as a whole string, useful in the case of ''
+        String wrapArgsAsWholeStringKey = "%\"command\"%";
+        commandIndex = wrapArgs.indexOf(wrapArgsAsWholeStringKey);
+        if (commandIndex >= 0) {
+            wrapArgs.set(commandIndex, "'" + String.join("' '", args) + "'");
+            return wrapArgs;
+        }
+
+        // failback to wrap command with the rest of the arguments added in
+        wrapArgs.addAll(args);
+        return wrapArgs;
+    }
+
+    private static List<String> getArguments(MicrosoftAccount account, Instance instance, String props,
+            String nativesDir, Path lwjglNativesTempDir, String username) {
         StringBuilder cpb = new StringBuilder();
         boolean hasCustomJarMods = false;
 
+        ErrorReporting.recordInstancePlay(instance.getPackName(), instance.getVersion(), instance.getLoaderVersion(),
+                2);
+
+        int maximumMemory = Optional.ofNullable(instance.launcher.maximumMemory).orElse(App.settings.maximumMemory);
+        int permGen = Optional.ofNullable(instance.launcher.permGen).orElse(App.settings.metaspace);
+        String javaArguments = Optional.ofNullable(instance.launcher.javaArguments).orElse(App.settings.javaParameters);
+        String javaPath = instance.getJavaPath();
+
         File jarMods = instance.getJarModsDirectory();
         File[] jarModFiles = jarMods.listFiles();
-        if (jarMods.exists() && jarModFiles != null && (instance.hasJarMods() || jarModFiles.length != 0)) {
-            if (instance.hasJarMods()) {
-                ArrayList<String> jarmods = new ArrayList<String>(Arrays.asList(instance.getJarOrder().split(",")));
-                if (jarmods.size() > 1) {
-                    hasCustomJarMods = true;
-                }
-                for (String mod : jarmods) {
-                    File thisFile = new File(jarMods, mod);
-                    if (thisFile.exists()) {
-                        cpb.append(File.pathSeparator);
-                        cpb.append(thisFile);
-                    }
-                }
-                for (File file : jarModFiles) {
-                    if (jarmods.contains(file.getName())) {
-                        continue;
-                    }
-                    hasCustomJarMods = true;
-                    cpb.append(File.pathSeparator);
-                    cpb.append(file);
-                }
-            } else {
-                for (File file : jarModFiles) {
-                    hasCustomJarMods = true;
-                    cpb.append(File.pathSeparator);
-                    cpb.append(file);
-                }
+        if (jarMods.exists() && jarModFiles != null) {
+            for (File file : jarModFiles) {
+                hasCustomJarMods = true;
+                cpb.append(file.getAbsolutePath());
+                cpb.append(File.pathSeparator);
             }
         }
 
-        for (String jarFile : instance.getLibrariesNeeded().split(",")) {
-            cpb.append(File.pathSeparator);
-            cpb.append(new File(instance.getBinDirectory(), jarFile));
-        }
+        Map<String, Library> dedupedLibraries = new LinkedHashMap<>();
+        instance.libraries.stream().filter(
+                library -> library.shouldInstall() && library.downloads.artifact != null && !library.hasNativeForOS())
+                .filter(library -> library.downloads.artifact != null && library.downloads.artifact.path != null)
+                .map(l -> LWJGLManager.shouldReplaceLWJGL3(instance)
+                        ? LWJGLManager.getReplacementLWJGL3Library(instance, l)
+                        : l)
+                .forEach(library -> {
+                    try {
+                        Pair<String, String> libraryName = Utils.convertMavenIdentifierToNameAndVersion(library.name);
+
+                        if (dedupedLibraries.containsKey(libraryName.left())) {
+                            Library existingLibrary = dedupedLibraries.get(libraryName.left());
+
+                            String existingVersion = Utils.convertMavenIdentifierToNameAndVersion(existingLibrary.name)
+                                    .right();
+                            String libraryVersion = Utils.convertMavenIdentifierToNameAndVersion(library.name).right();
+
+                            if (Utils.compareVersions(libraryVersion, existingVersion) == 1) {
+                                dedupedLibraries.put(libraryName.left(), library);
+                            }
+                        } else {
+                            dedupedLibraries.put(libraryName.left(), library);
+                        }
+                    } catch (Throwable throwable) {
+                        LogManager.logStackTrace("Failed to dedupe library " + library.name + ". Adding regardless.",
+                                throwable);
+
+                        // worse case scenario, just add it to the list
+                        dedupedLibraries.put(library.name, library);
+                    }
+                });
+
+        dedupedLibraries.values().stream()
+                .forEach(library -> {
+                    String path = FileSystem.LIBRARIES.resolve(library.downloads.artifact.path).toFile()
+                            .getAbsolutePath();
+
+                    if (cpb.indexOf(path) == -1) {
+                        cpb.append(path);
+                        cpb.append(File.pathSeparator);
+                    }
+                });
+
+        instance.libraries.stream().filter(Library::hasNativeForOS)
+                .map(l -> LWJGLManager.shouldReplaceLWJGL3(instance)
+                        ? LWJGLManager.getReplacementLWJGL3Library(instance, l)
+                        : l)
+                .forEach(library -> {
+                    com.atlauncher.data.minecraft.Download download = library.getNativeDownloadForOS();
+
+                    cpb.append(FileSystem.LIBRARIES.resolve(download.path).toFile().getAbsolutePath());
+                    cpb.append(File.pathSeparator);
+                });
 
         File binFolder = instance.getBinDirectory();
         File[] libraryFiles = binFolder.listFiles();
-        if (binFolder.exists() && libraryFiles != null && libraryFiles.length != 0) {
+        if (binFolder.exists() && libraryFiles != null) {
             for (File file : libraryFiles) {
-                if (file.isDirectory() || file.getName().equalsIgnoreCase(instance.getMinecraftJar().getName()) ||
-                        instance.getLibrariesNeeded().contains(file.getName())) {
-                    continue;
+                if (!file.getName().equalsIgnoreCase("minecraft.jar")
+                        && !file.getName().equalsIgnoreCase("modpack.jar")
+                        && (file.getName().endsWith(".jar") || file.getName().endsWith(".zip"))) {
+                    LogManager.info("Added in custom library " + file.getName());
+
+                    cpb.append(file);
+                    cpb.append(File.pathSeparator);
                 }
-
-                LogManager.info("Added in custom library " + file.getName());
-
-                cpb.append(File.pathSeparator);
-                cpb.append(file);
             }
         }
 
-        cpb.append(File.pathSeparator);
-        cpb.append(instance.getMinecraftJar());
+        // add minecraft client jar last
+        if (instance.usesCustomMinecraftJar()) {
+            cpb.append(instance.getCustomMinecraftJar().getAbsolutePath());
+        } else {
+            cpb.append(instance.getMinecraftJar().getAbsolutePath());
+        }
 
-        List<String> arguments = new ArrayList<String>();
+        if (instance.usesLegacyLaunch()) {
+            Path legacyLaunchJarPath = FileSystem.LIBRARIES.resolve("launcher/legacy-launch.jar");
 
-        String path = App.settings.getJavaPath() + File.separator + "bin" + File.separator + "java";
-        if (Utils.isWindows()) {
+            try {
+                if (!Files.exists(legacyLaunchJarPath) || Files.size(legacyLaunchJarPath) != 8368l) {
+                    FileSystem.copyResourcesOutJar();
+                }
+            } catch (IOException e) {
+                LogManager.logStackTrace("Failed to copy legacy-launch.jar to libraries folder", e);
+            }
+
+            cpb.append(File.pathSeparator);
+            cpb.append(legacyLaunchJarPath.toAbsolutePath().toString());
+        }
+
+        List<String> arguments = new ArrayList<>();
+
+        if (OS.isLinux() && App.settings.enableFeralGamemode && Utils.executableInPath("gamemoderun")) {
+            arguments.add("gamemoderun");
+        }
+
+        String path = javaPath + File.separator + "bin" + File.separator + "java";
+        if (OS.isWindows() && (Files.exists(Paths.get(path + "w")) || Files.exists(Paths.get(path + "w.exe")))) {
             path += "w";
         }
         arguments.add(path);
 
-        if (Utils.isWindows()) {
-            arguments.add("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump");
-        }
-
-        arguments.add("-XX:-OmitStackTraceInFastThrow");
-
-        if (App.settings.getJavaParameters().isEmpty()) {
-            // Mojang launcher defaults if user has no custom java arguments
-            arguments.add("-XX:+UseConcMarkSweepGC");
-            arguments.add("-XX:+CMSIncrementalMode");
-            arguments.add("-XX:-UseAdaptiveSizePolicy");
-        }
-
-        arguments.add("-Xms" + App.settings.getInitialMemory() + "M");
-
-        if (App.settings.getMaximumMemory() < instance.getMemory()) {
-            if ((Utils.getMaximumRam() / 2) < instance.getMemory()) {
-                arguments.add("-Xmx" + App.settings.getMaximumMemory() + "M");
+        if (OS.getMaximumRam() != 0 && maximumMemory < instance.getMemory()) {
+            if ((OS.getMaximumRam() / 2) < instance.getMemory()) {
+                arguments.add("-Xmx" + maximumMemory + "M");
             } else {
                 arguments.add("-Xmx" + instance.getMemory() + "M");
             }
         } else {
-            arguments.add("-Xmx" + App.settings.getMaximumMemory() + "M");
+            arguments.add("-Xmx" + maximumMemory + "M");
         }
-        if (App.settings.getPermGen() < instance.getPermGen() && (Utils.getMaximumRam() / 8) < instance.getPermGen()) {
-            if (Utils.isJava8() || Utils.isJava9()) {
+
+        if (OS.getMaximumRam() != 0 && permGen < instance.getPermGen()
+                && (OS.getMaximumRam() / 8) < instance.getPermGen()) {
+            if (Java.useMetaspace(javaPath)) {
                 arguments.add("-XX:MetaspaceSize=" + instance.getPermGen() + "M");
             } else {
                 arguments.add("-XX:PermSize=" + instance.getPermGen() + "M");
             }
         } else {
-            if (Utils.isJava8() || Utils.isJava9()) {
-                arguments.add("-XX:MetaspaceSize=" + App.settings.getPermGen() + "M");
+            if (Java.useMetaspace(javaPath)) {
+                arguments.add("-XX:MetaspaceSize=" + permGen + "M");
             } else {
-                arguments.add("-XX:PermSize=" + App.settings.getPermGen() + "M");
+                arguments.add("-XX:PermSize=" + permGen + "M");
             }
         }
 
@@ -154,109 +316,205 @@ public class MCLauncher {
             System.out.println("Okay you can look again, you saw NOTHING!");
         }
 
-        arguments.add("-Dfml.log.level=" + App.settings.getForgeLoggingLevel());
+        if (instance.logging != null && instance.logging.client != null) {
+            LoggingClient loggingClient = instance.logging.client;
 
-        if (Utils.isMac()) {
-            arguments.add("-Dapple.laf.useScreenMenuBar=true");
-            arguments.add("-Xdock:icon=" + new File(instance.getAssetsDir(), "icons/minecraft.icns").getAbsolutePath());
-            arguments.add("-Xdock:name=\"" + instance.getName() + "\"");
+            Path loggingClientPath = FileSystem.RESOURCES_LOG_CONFIGS.resolve(loggingClient.file.id);
+
+            if (Files.exists(loggingClientPath)) {
+                arguments.add(loggingClient.getCompiledArgument());
+            }
         }
 
-        if (!App.settings.getJavaParameters().isEmpty()) {
-            for (String arg : App.settings.getJavaParameters().split(" ")) {
+        if (OS.isMac()) {
+            arguments.add("-Dapple.laf.useScreenMenuBar=true");
+            arguments.add("-Xdock:name=\"" + instance.getName() + "\"");
+
+            if (new File(instance.getAssetsDir(), "icons/minecraft.icns").exists()) {
+                arguments.add(
+                        "-Xdock:icon=" + new File(instance.getAssetsDir(), "icons/minecraft.icns").getAbsolutePath());
+            }
+        }
+
+        if (!javaArguments.isEmpty()) {
+            for (String arg : javaArguments.split(" ")) {
                 if (!arg.isEmpty()) {
-                    if (instance.hasExtraArguments()) {
-                        if (instance.getExtraArguments().contains(arg)) {
-                            LogManager.error("Duplicate argument " + arg + " found and not added!");
-                            continue;
-                        }
-                    }
-
-                    if (arguments.toString().contains(arg)) {
-                        LogManager.error("Duplicate argument " + arg + " found and not added!");
-                        continue;
-                    }
-
                     arguments.add(arg);
                 }
             }
         }
 
-        arguments.add("-Djava.library.path=" + instance.getNativesDirectory().getAbsolutePath());
-        arguments.add("-cp");
-        arguments.add(System.getProperty("java.class.path") + cpb.toString());
-        arguments.add(instance.getMainClass());
+        String classpath = cpb.toString();
 
-        String props = "";
-
-        if (!response.isOffline()) {
-            Gson gson = new GsonBuilder().registerTypeAdapter(PropertyMap.class, new PropertyMapSerializer()).create();
-            props = gson.toJson(response.getAuth().getUserProperties());
-        }
-
-        if (instance.hasMinecraftArguments()) {
-            String[] minecraftArguments = instance.getMinecraftArguments().split(" ");
-            for (String argument : minecraftArguments) {
-                argument = argument.replace("${auth_player_name}", account.getMinecraftUsername());
-                argument = argument.replace("${profile_name}", instance.getName());
-                argument = argument.replace("${user_properties}", props);
-                argument = argument.replace("${version_name}", instance.getMinecraftVersion());
-                argument = argument.replace("${game_directory}", instance.getRootDirectory().getAbsolutePath());
-                argument = argument.replace("${game_assets}", instance.getAssetsDir().getAbsolutePath());
-                argument = argument.replace("${assets_root}", App.settings.getResourcesDir().getAbsolutePath());
-                argument = argument.replace("${assets_index_name}", instance.getAssets());
-                argument = argument.replace("${auth_uuid}", UUIDTypeAdapter.fromUUID(account.getRealUUID()));
-                argument = argument.replace("${auth_access_token}", account.getAccessToken());
-                argument = argument.replace("${auth_session}", account.getSession(response));
-                argument = argument.replace("${user_type}", response.isOffline() ? com.mojang.authlib.UserType.MOJANG
-                        .getName() : response.getAuth().getUserType().getName());
-                arguments.add(argument);
+        for (String argument : instance.arguments.jvmAsStringList()) {
+            if (IGNORED_ARGUMENTS.contains(argument)) {
+                continue;
             }
-        } else {
-            arguments.add("--username=" + account.getMinecraftUsername());
-            arguments.add("--session=" + account.getSession(response));
 
-            // This is for 1.7
-            arguments.add("--accessToken=" + account.getAccessToken());
-            arguments.add("--uuid=" + UUIDTypeAdapter.fromUUID(account.getRealUUID()));
-            // End of stuff for 1.7
+            arguments.add(replaceArgument(argument, instance, account, props, nativesDir, classpath, username));
+        }
 
-            arguments.add("--version=" + instance.getMinecraftVersion());
-            arguments.add("--gameDir=" + instance.getRootDirectory().getAbsolutePath());
-            arguments.add("--assetsDir=" + App.settings.getResourcesDir().getAbsolutePath());
+        if (OS.isWindows() && !arguments
+                .contains("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump")) {
+            arguments.add("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump");
         }
-        if (App.settings.startMinecraftMaximised()) {
-            arguments.add("--width=" + Utils.getMaximumWindowWidth());
-            arguments.add("--height=" + Utils.getMaximumWindowHeight());
-        } else {
-            arguments.add("--width=" + App.settings.getWindowWidth());
-            arguments.add("--height=" + App.settings.getWindowHeight());
+
+        // if there's no -Djava.library.path already, then add it (for older versions)
+        if (!arguments.stream().anyMatch(arg -> arg.startsWith("-Djava.library.path="))) {
+            arguments.add("-Djava.library.path=" + nativesDir);
         }
-        if (instance.hasExtraArguments()) {
-            String args = instance.getExtraArguments();
-            if (args.contains(" ")) {
-                Collections.addAll(arguments, args.split(" "));
+
+        // if lwjglNativesTempDir isn't null we need to pass the lwjgl librarypath
+        if (lwjglNativesTempDir != null) {
+            arguments.add("-Dorg.lwjgl.librarypath=" + lwjglNativesTempDir.toAbsolutePath().toString());
+        }
+
+        // if there's no classpath already, then add it (for older versions)
+        if (!arguments.contains("-cp")) {
+            arguments.add("-cp");
+            arguments.add(cpb.toString());
+        }
+
+        if (instance.usesLegacyLaunch()) {
+            arguments.add("com.atlauncher.mclauncher.legacy.LegacyMCLauncher");
+            // Start or passed in arguments
+            arguments.add(instance.getRootDirectory().getAbsolutePath()); // Path
+            arguments.add(username); // Username
+            arguments.add(account.getSessionToken()); // Session
+            arguments.add(Constants.LAUNCHER_NAME + " - " + instance.getName()); // Frame title
+            arguments.add(App.settings.windowWidth + ""); // Window Width
+            arguments.add(App.settings.windowHeight + ""); // Window Height
+            if (App.settings.maximiseMinecraft) {
+                arguments.add("true"); // Maximised
             } else {
-                arguments.add(args);
+                arguments.add("false"); // Not Maximised
+            }
+        } else {
+            arguments.add(instance.getMainClass());
+        }
+
+        if (!instance.usesLegacyLaunch()) {
+            for (String argument : instance.arguments.gameAsStringList()) {
+                if (IGNORED_ARGUMENTS.contains(argument)) {
+                    continue;
+                }
+
+                arguments.add(replaceArgument(argument, instance, account, props, nativesDir, classpath, username));
+            }
+
+            if (App.settings.maximiseMinecraft) {
+                arguments.add("--width=" + OS.getMaximumWindowWidth());
+                arguments.add("--height=" + OS.getMaximumWindowHeight());
+            } else {
+                arguments.add("--width=" + App.settings.windowWidth);
+                arguments.add("--height=" + App.settings.windowHeight);
             }
         }
 
+        // Quick Play feature (with backward compatibility for older versions of
+        // Minecraft)
+        QuickPlay quickPlay = instance.launcher.quickPlay;
+
+        // Quick Play Multiplayer
+        if (quickPlay.serverAddress != null && !quickPlay.serverAddress.isEmpty()) {
+            String enteredServerAddress = quickPlay.serverAddress;
+            if (instance.isQuickPlaySupported(QuickPlayOption.multiPlayer)) {
+                // Minecraft 23w14a and newer versions
+                arguments.addAll(
+                        Arrays.asList(quickPlay.getSelectedQuickPlayOption().argumentRuleValue, enteredServerAddress));
+            } else {
+                // Minecraft 23w13a and older versions
+                String[] parts = enteredServerAddress.contains(":") ? enteredServerAddress.split(":")
+                        : new String[] { enteredServerAddress };
+                String address = parts[0];
+                String port = parts.length > 1 ? parts[1] : String.valueOf(Constants.MINECRAFT_DEFAULT_SERVER_PORT);
+                arguments.addAll(Arrays.asList("--server", address));
+                arguments.addAll(Arrays.asList("--port", port));
+            }
+        }
+
+        // Quick Play Single Player
+        if (quickPlay.worldName != null && !quickPlay.worldName.isEmpty()) {
+            String selectedWorldSaveName = quickPlay.worldName;
+            if (instance.isQuickPlaySupported(QuickPlayOption.singlePlayer)) {
+                // Only work for Minecraft 23w14a and newer versions
+                arguments.addAll(
+                        Arrays.asList(quickPlay.getSelectedQuickPlayOption().argumentRuleValue, selectedWorldSaveName));
+            }
+        }
+
+        // Quick Play Realm
+        if (quickPlay.realmId != null && !quickPlay.realmId.isEmpty()) {
+            String realmId = quickPlay.realmId;
+            if (instance.isQuickPlaySupported(QuickPlayOption.realm)) {
+                // Only work for Minecraft 23w14a and newer versions
+                arguments.addAll(Arrays.asList(quickPlay.getSelectedQuickPlayOption().argumentRuleValue, realmId));
+            }
+        }
+
+        return arguments;
+    }
+
+    private static String replaceArgument(String incomingArgument, Instance instance, MicrosoftAccount account,
+            String props, String nativesDir, String classpath, String username) {
+        String argument = incomingArgument;
+
+        argument = argument.replace("${auth_player_name}", username);
+        argument = argument.replace("${profile_name}", instance.getName());
+        argument = argument.replace("${user_properties}", Optional.ofNullable(props).orElse("[]"));
+        argument = argument.replace("${version_name}", instance.getMinecraftVersion());
+        argument = argument.replace("${game_directory}", instance.getRootDirectory().getAbsolutePath());
+        argument = argument.replace("${game_assets}", instance.getAssetsDir().getAbsolutePath());
+        argument = argument.replace("${assets_root}", FileSystem.ASSETS.toAbsolutePath().toString());
+        argument = argument.replace("${assets_index_name}", instance.getAssets());
+        argument = argument.replace("${auth_uuid}", account.getRealUUID().toString());
+        argument = argument.replace("${auth_access_token}", account.getAccessToken());
+        argument = argument.replace("${version_type}", instance.type.getValue());
+        argument = argument.replace("${launcher_name}", Constants.LAUNCHER_NAME);
+        argument = argument.replace("${launcher_version}", Constants.VERSION.toStringForLogging());
+        argument = argument.replace("${natives_directory}", nativesDir);
+        argument = argument.replace("${user_type}", account.getUserType());
+        argument = argument.replace("${auth_session}", account.getSessionToken());
+        argument = argument.replace("${library_directory}", FileSystem.LIBRARIES.toAbsolutePath().toString());
+        argument = argument.replace("${classpath}", classpath);
+        argument = argument.replace("${classpath_separator}", File.pathSeparator);
+
+        return argument;
+    }
+
+    private static String censorArguments(List<String> arguments, MicrosoftAccount account, String props,
+            String username) {
         String argsString = arguments.toString();
 
         if (!LogManager.showDebug) {
-            argsString = argsString.replace(account.getMinecraftUsername(), "REDACTED");
-            argsString = argsString.replace(account.getUUID(), "REDACTED");
-            argsString = argsString.replace(account.getAccessToken(), "REDACTED");
-            argsString = argsString.replace(account.getSession(response), "REDACTED");
-            argsString = argsString.replace(props, "REDACTED");
+            if (App.settings != null) {
+                argsString = argsString.replace(FileSystem.BASE_DIR.toAbsolutePath().toString(), "USERSDIR");
+            }
+
+            argsString = argsString.replace(username, "REDACTED");
+            argsString = argsString.replace(account.uuid, "REDACTED");
         }
 
-        LogManager.info("Launching Minecraft with the following arguments " + "(user related stuff has been removed):" +
-                " " + argsString);
-        ProcessBuilder processBuilder = new ProcessBuilder(arguments);
-        processBuilder.directory(instance.getRootDirectory());
-        processBuilder.redirectErrorStream(true);
-        processBuilder.environment().remove("_JAVA_OPTIONS"); // Remove any _JAVA_OPTIONS, they are a PAIN
-        return processBuilder.start();
+        if (props != null) {
+            argsString = argsString.replace(props, "REDACTED");
+        }
+        argsString = argsString.replace(account.getAccessToken(), "REDACTED");
+        argsString = argsString.replace(account.getSessionToken(), "REDACTED");
+
+        return argsString;
+    }
+
+    private static Map<String, String> getEnvironmentVariables(Instance instance) {
+        Map<String, String> env = new LinkedHashMap<>();
+        Boolean useDedicatedGpu = Optional.ofNullable(instance.launcher.useDedicatedGpu)
+                .orElse(App.settings.useDedicatedGpu);
+
+        if (OS.isLinux() && useDedicatedGpu) {
+            env.put("DRI_PRIME", "1");
+            env.put("__NV_PRIME_RENDER_OFFLOAD", "1");
+            env.put("__GLX_VENDOR_LIBRARY_NAME", "nvidia");
+        }
+
+        return env;
     }
 }

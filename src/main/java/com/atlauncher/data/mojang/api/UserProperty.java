@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,10 +17,10 @@
  */
 package com.atlauncher.data.mojang.api;
 
-import com.atlauncher.LogManager;
-import com.atlauncher.annot.Json;
-
 import java.util.Map;
+
+import com.atlauncher.annot.Json;
+import com.atlauncher.managers.LogManager;
 
 @Json
 public class UserProperty {
@@ -29,6 +29,22 @@ public class UserProperty {
     private String profileName;
     private boolean isPublic;
     private Map<String, ProfileTexture> textures;
+
+    public long getTimestamp() {
+        return this.timestamp;
+    }
+
+    public String getProfileId() {
+        return this.profileId;
+    }
+
+    public String getProfileName() {
+        return this.profileName;
+    }
+
+    public boolean isPublic() {
+        return this.isPublic;
+    }
 
     public ProfileTexture getTexture(String name) {
         if (!textures.containsKey(name)) {

@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,11 +17,13 @@
  */
 package com.atlauncher.data.mojang.api;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
 import com.atlauncher.Gsons;
 import com.atlauncher.annot.Json;
-import com.atlauncher.utils.Base64;
 
-import java.io.IOException;
+import net.iharder.Base64;
 
 @Json
 public class UserPropertyRaw {
@@ -33,7 +35,16 @@ public class UserPropertyRaw {
         return this.name;
     }
 
+    public String getValue() {
+        return this.value;
+    }
+
+    public String getSignature() {
+        return this.signature;
+    }
+
     public UserProperty parse() throws IOException {
-        return Gsons.DEFAULT.fromJson(new String(Base64.decode(this.value)), UserProperty.class);
+        return Gsons.DEFAULT.fromJson(new String(Base64.decode(this.value), StandardCharsets.UTF_8),
+                UserProperty.class);
     }
 }

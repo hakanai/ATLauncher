@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,23 +15,35 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.gui.components;
 
-import javax.swing.JTextPane;
-import javax.swing.text.SimpleAttributeSet;
-import javax.swing.text.StyleConstants;
 import java.awt.Color;
 
+import javax.swing.JTextPane;
+import javax.swing.UIManager;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.BoxView;
+import javax.swing.text.ComponentView;
+import javax.swing.text.Element;
+import javax.swing.text.IconView;
+import javax.swing.text.LabelView;
+import javax.swing.text.ParagraphView;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledEditorKit;
+import javax.swing.text.View;
+import javax.swing.text.ViewFactory;
+
+import com.atlauncher.App;
+
 public final class Console extends JTextPane {
-    /**
-     * Auto generate serial.
-     */
-    private static final long serialVersionUID = 5325985090210097809L;
     private final SimpleAttributeSet attrs = new SimpleAttributeSet();
 
     public Console() {
         this.setEditable(false);
+        this.setEditorKit(new WrapEditorKit());
+        this.setFont(App.THEME.getConsoleFont().deriveFont((float) UIManager.get("Console.fontSize")));
     }
 
     public Console setColor(Color c) {
@@ -46,15 +58,69 @@ public final class Console extends JTextPane {
 
     @Override
     public boolean getScrollableTracksViewportWidth() {
-        return true; // Word Wrapping
+        return true;
     }
 
     public void write(String str) {
         try {
             this.getDocument().insertString(this.getDocument().getLength(), str, this.attrs);
             this.setCaretPosition(this.getDocument().getLength());
-        } catch (Exception ex) {
+        } catch (BadLocationException ex) {
             ex.printStackTrace(System.err);
         }
     }
+}
+
+// https://stackoverflow.com/a/13375811
+class WrapEditorKit extends StyledEditorKit {
+    ViewFactory defaultFactory = new WrapColumnFactory();
+
+    @Override
+    public ViewFactory getViewFactory() {
+        return defaultFactory;
+    }
+
+}
+
+class WrapColumnFactory implements ViewFactory {
+    @Override
+    public View create(Element elem) {
+        String kind = elem.getName();
+        if (kind != null) {
+            switch (kind) {
+                case AbstractDocument.ContentElementName:
+                    return new WrapLabelView(elem);
+                case AbstractDocument.ParagraphElementName:
+                    return new ParagraphView(elem);
+                case AbstractDocument.SectionElementName:
+                    return new BoxView(elem, View.Y_AXIS);
+                case StyleConstants.ComponentElementName:
+                    return new ComponentView(elem);
+                case StyleConstants.IconElementName:
+                    return new IconView(elem);
+            }
+        }
+
+        // default to text display
+        return new LabelView(elem);
+    }
+}
+
+class WrapLabelView extends LabelView {
+    public WrapLabelView(Element elem) {
+        super(elem);
+    }
+
+    @Override
+    public float getMinimumSpan(int axis) {
+        switch (axis) {
+            case View.X_AXIS:
+                return 0;
+            case View.Y_AXIS:
+                return super.getMinimumSpan(axis);
+            default:
+                throw new IllegalArgumentException("Invalid axis: " + axis);
+        }
+    }
+
 }

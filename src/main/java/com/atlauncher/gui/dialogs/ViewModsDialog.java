@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,17 +17,6 @@
  */
 package com.atlauncher.gui.dialogs;
 
-import com.atlauncher.App;
-import com.atlauncher.data.Language;
-import com.atlauncher.data.Mod;
-import com.atlauncher.data.Pack;
-import com.atlauncher.gui.card.ModCard;
-
-import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTextField;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -35,32 +24,45 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
+
+import org.mini2Dx.gettext.GetText;
+
+import com.atlauncher.App;
+import com.atlauncher.data.Pack;
+import com.atlauncher.data.json.Mod;
+import com.atlauncher.gui.card.ModCard;
+import com.atlauncher.network.Analytics;
+
 public final class ViewModsDialog extends JDialog {
-    private final Pack pack;
     private final JPanel contentPanel = new JPanel(new GridBagLayout());
-    private final JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
     private final JTextField searchField = new JTextField(16);
-    private final List<ModCard> cards = new LinkedList<ModCard>();
+    private final List<ModCard> cards = new ArrayList<>();
 
     public ViewModsDialog(Pack pack) {
-        super(App.settings.getParent(), Language.INSTANCE.localizeWithReplace("pack.mods", pack.getName()),
-                ModalityType.APPLICATION_MODAL);
-        this.pack = pack;
+        // #. {0} is the name of the pack
+        super(App.launcher.getParent(), GetText.tr("Mods in {0}", pack.getName()), ModalityType.DOCUMENT_MODAL);
+
+        Analytics.sendScreenView("View Mods Dialog");
 
         this.setPreferredSize(new Dimension(550, 450));
-        this.setResizable(false);
+        this.setMinimumSize(new Dimension(550, 450));
+        this.setResizable(true);
         this.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
-        this.topPanel.add(new JLabel(Language.INSTANCE.localize("common.search") + ": "));
-        this.topPanel.add(this.searchField);
+        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        topPanel.add(new JLabel(GetText.tr("Search") + ": "));
+        topPanel.add(this.searchField);
 
-        this.add(this.topPanel, BorderLayout.NORTH);
+        this.add(topPanel, BorderLayout.NORTH);
         this.add(new JScrollPane(this.contentPanel) {
             {
                 this.getVerticalScrollBar().setUnitIncrement(16);
@@ -81,13 +83,8 @@ public final class ViewModsDialog extends JDialog {
             }
         });
 
-        List<Mod> mods = this.pack.getMods(this.pack.getLatestVersion().getVersion(), false);
-        Collections.sort(mods, new Comparator<Mod>() {
-            @Override
-            public int compare(Mod o1, Mod o2) {
-                return o1.getName().compareToIgnoreCase(o2.getName());
-            }
-        });
+        List<Mod> mods = pack.getJsonVersion(pack.getLatestVersion().version).getMods();
+        mods.sort((o1, o2) -> o1.getName().compareToIgnoreCase(o2.getName()));
 
         for (Mod mod : mods) {
             ModCard card = new ModCard(mod);
@@ -97,7 +94,7 @@ public final class ViewModsDialog extends JDialog {
         }
 
         this.pack();
-        this.setLocationRelativeTo(App.settings.getParent());
+        this.setLocationRelativeTo(App.launcher.getParent());
     }
 
     private void reload() {
@@ -113,8 +110,8 @@ public final class ViewModsDialog extends JDialog {
             boolean show = true;
 
             if (!this.searchField.getText().isEmpty()) {
-                if (!Pattern.compile(Pattern.quote(this.searchField.getText()), Pattern.CASE_INSENSITIVE).matcher
-                        (card.mod.getName()).find()) {
+                if (!Pattern.compile(Pattern.quote(this.searchField.getText()), Pattern.CASE_INSENSITIVE)
+                        .matcher(card.mod.getName()).find()) {
 
                     show = false;
                 }

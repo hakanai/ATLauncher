@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,50 +15,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.thread;
 
-import com.atlauncher.App;
-import com.atlauncher.data.Constants;
-
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
 import java.util.concurrent.Callable;
+
+import com.atlauncher.App;
+import com.atlauncher.constants.Constants;
+import com.atlauncher.utils.Utils;
 
 public final class PasteUpload implements Callable<String> {
     @Override
-    public String call() throws Exception {
-        String log = App.settings.getLog().replace(System.getProperty("line.separator"), "\n");
-        String urlParameters = "";
-        urlParameters += "title=" + URLEncoder.encode("ATLauncher - Log", "ISO-8859-1") + "&";
-        urlParameters += "language=" + URLEncoder.encode("text", "ISO-8859-1") + "&";
-        urlParameters += "private=" + URLEncoder.encode("1", "ISO-8859-1") + "&";
-        urlParameters += "text=" + URLEncoder.encode(log, "ISO-8859-1");
-        HttpURLConnection conn = (HttpURLConnection) new URL(Constants.PASTE_API_URL).openConnection();
-        conn.setDoOutput(true);
-        conn.connect();
-        conn.getOutputStream().write(urlParameters.getBytes());
-        conn.getOutputStream().flush();
-        conn.getOutputStream().close();
+    public String call() {
+        String log = App.console.getLog().replace(System.lineSeparator(), "\n");
 
-        String line;
-        StringBuilder builder = new StringBuilder();
-        InputStream stream;
-        try {
-            stream = conn.getInputStream();
-        } catch (Exception ex) {
-            ex.printStackTrace(System.err);
-            stream = conn.getErrorStream();
-        }
-        BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-        while ((line = reader.readLine()) != null) {
-            builder.append(line);
-        }
-        reader.close();
-        return builder.toString();
+        return Utils.uploadPaste(Constants.LAUNCHER_NAME + " - Log", log);
     }
 }

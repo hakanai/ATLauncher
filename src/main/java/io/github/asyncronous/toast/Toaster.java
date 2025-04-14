@@ -1,16 +1,19 @@
 package io.github.asyncronous.toast;
 
-import io.github.asyncronous.toast.ui.ToastWindow;
+import java.awt.GraphicsEnvironment;
+import java.awt.Image;
+import java.io.IOException;
+import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.UIManager;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.GraphicsEnvironment;
-import java.awt.Image;
-import java.io.InputStream;
+
+import com.atlauncher.App;
+import com.atlauncher.managers.LogManager;
+
+import io.github.asyncronous.toast.ui.ToastWindow;
 
 /**
  * Static class to allow easier use of toaster notifications
@@ -45,13 +48,7 @@ public final class Toaster {
         UIManager.put(ToasterConstants.ERROR_ICON, createImage("error"));
         UIManager.put(ToasterConstants.QUESTION_ICON, createImage("question"));
         UIManager.put(ToasterConstants.WARNING_ICON, createImage("warning"));
-        UIManager.put(ToasterConstants.FONT, new Font("SansSerif", Font.BOLD, 12).deriveFont(24.0F));
-        UIManager.put(ToasterConstants.MSG_COLOR, Color.BLACK);
-        UIManager.put(ToasterConstants.BORDER_COLOR, Color.BLACK);
-        UIManager.put(ToasterConstants.BG_COLOR, Color.WHITE);
-        UIManager.put(ToasterConstants.TIME, 5000);
-        UIManager.put(ToasterConstants.OPAQUE, false);
-        UIManager.put(ToasterConstants.OPACITY, 0.5F);
+        UIManager.put(ToasterConstants.FONT, App.THEME.getBoldFont().deriveFont(20.0F));
         UIManager.put("Toaster.contBounds", GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds());
     }
 
@@ -59,7 +56,6 @@ public final class Toaster {
      * Will generate a question Toaster Notification with the chosen settings
      *
      * @param msg The text of the message you want to display
-     * @example Toaster.popQuestion("This is a question?");
      */
     public void popQuestion(String msg) {
         ToastWindow window = new ToastWindow();
@@ -72,7 +68,6 @@ public final class Toaster {
      * Will generate a standard info Toaster Notification with the chosen settings
      *
      * @param msg The text of the message you want to display
-     * @example Toaster.pop("This is some information");
      */
     public void pop(String msg) {
         ToastWindow window = new ToastWindow();
@@ -85,7 +80,6 @@ public final class Toaster {
      * Will generate a warning Toaster Notification with the chosen settings
      *
      * @param msg The text of the message you want to display
-     * @example Toaster.popWarning("This is a warning");
      */
     public void popWarning(String msg) {
         ToastWindow window = new ToastWindow();
@@ -98,7 +92,6 @@ public final class Toaster {
      * Will generate an error Toaster Notification with the chosen settings
      *
      * @param msg The text of the message you want to display
-     * @example Toaster.popError("This is an error");
      */
     public void popError(String msg) {
         ToastWindow window = new ToastWindow();
@@ -112,9 +105,9 @@ public final class Toaster {
      *
      * @param msg The text of the message you want to display
      * @param ico The icon you would like to display
-     * @example ImageIcon image = new ImageIcon(ImageIO.read(getClass().getResourceAsStream
-     * ("/assets/toaster/icons/error.png"
-     * ))); Toaster.pop("This is an error", image);
+     *          ImageIcon(ImageIO.read(getClass().getResourceAsStream
+     *          ("/assets/toaster/icons/error.png" ))); Toaster.pop("This is an
+     *          error", image);
      */
     public void pop(String msg, Icon ico) {
         ToastWindow window = new ToastWindow();
@@ -124,16 +117,16 @@ public final class Toaster {
     }
 
     private Image createImage(String name) {
+        InputStream stream = Toaster.class.getResourceAsStream("/assets/toast/icons/" + name + ".png");
+
+        if (stream == null) {
+            throw new NullPointerException("Stream == null");
+        }
+
         try {
-            InputStream stream = Toaster.class.getResourceAsStream("/assets/toast/icons/" + name + ".png");
-
-            if (stream == null) {
-                throw new NullPointerException("Stream == null");
-            }
-
             return ImageIO.read(stream);
-        } catch (Exception ex) {
-            ex.printStackTrace(System.err);
+        } catch (IOException ex) {
+            LogManager.logStackTrace("Failed to load Toaster image", ex);
             return null;
         }
     }

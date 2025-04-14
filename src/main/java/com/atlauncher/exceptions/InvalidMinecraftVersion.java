@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,8 @@
 package com.atlauncher.exceptions;
 
 /**
- * InvalidMinecraftVersion is thrown when a given Minecraft version number isn't supported by the Launcher
- *
- * @author Ryan
+ * InvalidMinecraftVersion is thrown when a given Minecraft version number isn't
+ * supported by the Launcher.
  */
 public class InvalidMinecraftVersion extends Exception {
     public InvalidMinecraftVersion(String message) {

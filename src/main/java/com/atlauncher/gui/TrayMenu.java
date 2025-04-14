@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,114 +17,117 @@
  */
 package com.atlauncher.gui;
 
-import com.atlauncher.App;
-import com.atlauncher.data.Language;
-import com.atlauncher.evnt.listener.ConsoleCloseListener;
-import com.atlauncher.evnt.listener.ConsoleOpenListener;
-import com.atlauncher.evnt.listener.RelocalizationListener;
-import com.atlauncher.evnt.manager.ConsoleCloseManager;
-import com.atlauncher.evnt.manager.ConsoleOpenManager;
-import com.atlauncher.evnt.manager.RelocalizationManager;
+import java.awt.Frame;
+import java.awt.SystemTray;
+import java.awt.Window;
 
 import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
-public final class TrayMenu extends JPopupMenu implements RelocalizationListener, ConsoleCloseListener,
-        ConsoleOpenListener {
+import org.mini2Dx.gettext.GetText;
 
-    private final JMenuItem killMCButton = new JMenuItem();
-    private final JMenuItem tcButton = new JMenuItem();
-    private final JMenuItem quitButton = new JMenuItem();
+import com.atlauncher.App;
+import com.atlauncher.FileSystem;
+import com.atlauncher.builders.HTMLBuilder;
+import com.atlauncher.data.ConsoleState;
+import com.atlauncher.evnt.manager.ConsoleStateManager;
+import com.atlauncher.managers.DialogManager;
+import com.atlauncher.network.Analytics;
+import com.atlauncher.network.analytics.AnalyticsEvent;
+import com.atlauncher.utils.OS;
+
+public final class TrayMenu extends JPopupMenu {
+
+    private final JMenuItem killMinecraftButton = new JMenuItem(GetText.tr("Kill Minecraft"));
+    private final JMenuItem toggleConsoleButton = new JMenuItem(GetText.tr("Toggle Console"));
+    private final JMenuItem killOpenDialogsButton = new JMenuItem(GetText.tr("Kill Open Dialogs"));
+    private final JMenuItem openLauncherFolderButton = new JMenuItem(GetText.tr("Open Launcher Folder"));
+    private final JMenuItem quitButton = new JMenuItem(GetText.tr("Quit"));
 
     public TrayMenu() {
         super();
 
         this.setMinecraftLaunched(false);
 
-        this.killMCButton.setText("Kill Minecraft");
-        this.tcButton.setText("Toggle Console");
-        this.quitButton.setText("Quit");
-
-        this.tcButton.setEnabled(false);
-
-        this.add(this.killMCButton);
-        this.add(this.tcButton);
+        this.add(this.killMinecraftButton);
+        this.add(this.toggleConsoleButton);
+        this.addSeparator();
+        this.add(this.killOpenDialogsButton);
+        this.add(this.openLauncherFolderButton);
         this.addSeparator();
         this.add(this.quitButton);
 
-        ConsoleCloseManager.addListener(this);
-        ConsoleOpenManager.addListener(this);
-        RelocalizationManager.addListener(this);
+        ConsoleStateManager.getObservable().subscribe(newState-> {
+                if (newState == ConsoleState.OPEN) {
+                    onConsoleOpen();
+                } else {
+                    onConsoleClose();
+                }
+            }
+        );
 
         this.addActionListeners();
     }
 
     private void addActionListeners() {
-        this.killMCButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                SwingUtilities.invokeLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (App.settings.isMinecraftLaunched()) {
-                            int ret = JOptionPane.showConfirmDialog(App.settings.getParent(), "<html><p " +
-                                    "align=\"center\">" + Language.INSTANCE.localizeWithReplace("console" + "" +
-                                    ".killsure", "<br/><br/>") + "</p></html>", Language.INSTANCE.localize("console" +
-                                    ".kill"), JOptionPane.YES_NO_OPTION);
+        this.killMinecraftButton.addActionListener(e -> SwingUtilities.invokeLater(() -> {
+            if (App.launcher.minecraftLaunched) {
+                int ret = DialogManager.yesNoDialog().setTitle(GetText.tr("Kill Minecraft"))
+                        .setContent(new HTMLBuilder().center().text(GetText.tr(
+                                "Are you sure you want to kill the Minecraft process?<br/>Doing so can cause corruption of your saves"))
+                                .build())
+                        .setType(DialogManager.ERROR).show();
 
-                            if (ret == JOptionPane.YES_OPTION) {
-                                App.settings.killMinecraft();
-                            }
-                        }
+                if (ret == DialogManager.YES_OPTION) {
+                    Analytics.trackEvent(AnalyticsEvent.simpleEvent("tray_kill_minecraft"));
+                    App.launcher.killMinecraft();
+                }
+            }
+        }));
+        this.toggleConsoleButton.addActionListener(e -> {
+            Analytics.trackEvent(AnalyticsEvent.simpleEvent("tray_toggle_console"));
+            App.console.setVisible(!App.console.isVisible());
+        });
+        this.killOpenDialogsButton.addActionListener(e -> {
+            Analytics.trackEvent(AnalyticsEvent.simpleEvent("tray_kill_open_dialogs"));
+            for (Frame frame : Frame.getFrames()) {
+                for (Window window : frame.getOwnedWindows()) {
+                    if (window.getName().startsWith("dialog")) {
+                        window.setVisible(false);
+                        window.dispose();
                     }
-                });
+                }
             }
         });
-        this.tcButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                App.settings.getConsole().setVisible(!App.settings.getConsole().isVisible());
-            }
+        this.openLauncherFolderButton.addActionListener(e -> {
+            Analytics.trackEvent(AnalyticsEvent.simpleEvent("tray_open_launcher_folder"));
+            OS.openFileExplorer(FileSystem.BASE_DIR);
         });
-        this.quitButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                System.exit(0);
+        this.quitButton.addActionListener(e -> {
+            Analytics.trackEvent(AnalyticsEvent.simpleEvent("tray_quit"));
+            try {
+                if (SystemTray.isSupported()) {
+                    SystemTray.getSystemTray().remove(App.trayIcon);
+                }
+            } catch (Exception ignored) {
+                // ignored
             }
+
+            Analytics.endSession();
+            System.exit(0);
         });
     }
 
-    public void localize() {
-        this.tcButton.setEnabled(true);
-        this.onRelocalization();
+    public void setMinecraftLaunched(boolean launched) {
+        this.killMinecraftButton.setVisible(launched);
     }
 
-    public void setMinecraftLaunched(boolean l) {
-        this.killMCButton.setEnabled(l);
+    private void onConsoleClose() {
+        this.toggleConsoleButton.setText(GetText.tr("Show Console"));
     }
 
-    @Override
-    public void onConsoleClose() {
-        this.tcButton.setText(Language.INSTANCE.localize("console.show"));
-    }
-
-    @Override
-    public void onConsoleOpen() {
-        this.tcButton.setText(Language.INSTANCE.localize("console.hide"));
-    }
-
-    @Override
-    public void onRelocalization() {
-        this.killMCButton.setText(Language.INSTANCE.localize("console.kill"));
-        this.quitButton.setText(Language.INSTANCE.localize("common.quit"));
-        if (App.settings.getConsole().isVisible()) {
-            this.tcButton.setText(Language.INSTANCE.localize("console.hide"));
-        } else {
-            this.tcButton.setText(Language.INSTANCE.localize("console.show"));
-        }
+    private void onConsoleOpen() {
+        this.toggleConsoleButton.setText(GetText.tr("Hide Console"));
     }
 }

@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,11 +17,11 @@
  */
 package com.atlauncher.data;
 
-import com.atlauncher.App;
+import java.util.List;
+
 import com.atlauncher.annot.Json;
 import com.atlauncher.exceptions.InvalidPack;
-
-import java.util.List;
+import com.atlauncher.managers.PackManager;
 
 @Json
 public class PackUsers {
@@ -30,11 +30,10 @@ public class PackUsers {
     private List<String> allowedPlayers;
 
     public void addUsers() {
-        Pack pack = null;
+        Pack pack;
         try {
-            pack = App.settings.getPackByID(this.pack);
+            pack = PackManager.getPackByID(this.pack);
         } catch (InvalidPack e) {
-            App.settings.logStackTrace(e);
             return;
         }
         if (this.testers != null) {

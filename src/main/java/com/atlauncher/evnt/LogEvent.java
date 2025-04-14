@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,49 +15,73 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.evnt;
 
-import com.atlauncher.App;
-import com.atlauncher.LogManager;
-import com.atlauncher.gui.components.Console;
-import com.atlauncher.utils.Timestamper;
-import com.atlauncher.writer.LogEventWriter;
-
 import java.awt.Color;
-import java.io.IOException;
+
+import javax.swing.UIManager;
+
+import org.apache.logging.log4j.Logger;
+
+import com.atlauncher.App;
+import com.atlauncher.FileSystem;
+import com.atlauncher.gui.components.Console;
+import com.atlauncher.managers.LogManager;
+import com.atlauncher.utils.Timestamper;
 
 public final class LogEvent {
     public static final int CONSOLE = 0xA;
-    public static final int FILE = 0xB;
+    public static final int LOG4J = 0xB;
     public final LogType type;
     public final String body;
     public final int meta;
 
     public LogEvent(LogType type, String body) {
-        this(type, body, CONSOLE | FILE);
+        this(type, body, CONSOLE | LOG4J);
     }
 
     public LogEvent(LogType type, String body, int meta) {
         this.type = type;
-        if (App.settings != null && !LogManager.showDebug) {
-            body = body.replace(App.settings.getBaseDir().getAbsolutePath(), "**USERSDIR**");
+
+        if (body == null) {
+            body = "";
         }
+
+        if (App.settings != null && !LogManager.showDebug) {
+            body = body.replace(FileSystem.BASE_DIR.toAbsolutePath().toString(), "**USERSDIR**");
+        }
+
         this.body = (!body.endsWith("\n") ? body + "\n" : body);
+
         this.meta = meta;
     }
 
-    public void post(LogEventWriter writer) {
+    public void post(Logger logger) {
         if ((this.meta & CONSOLE) == CONSOLE) {
-            Console c = App.settings.getConsole().console;
+            Console c = App.console.console;
             c.setColor(this.type.color()).setBold(true).write("[" + Timestamper.now() + "] ");
-            c.setColor(App.THEME.getConsoleTextColor()).setBold(false).write(this.body);
+            c.setColor(UIManager.getColor("EditorPane.foreground")).setBold(false).write(this.body);
         }
-        if ((this.meta & FILE) == FILE) {
-            try {
-                writer.write(this);
-            } catch (IOException e) {
-                e.printStackTrace();
+
+        if ((this.meta & LOG4J) == LOG4J) {
+            switch (type) {
+                case WARN: {
+                    logger.warn(body);
+                    break;
+                }
+                case ERROR: {
+                    logger.error(body);
+                    break;
+                }
+                case DEBUG: {
+                    logger.debug(body);
+                    break;
+                }
+                case INFO:
+                default: {
+                    logger.info(body);
+                    break;
+                }
             }
         }
     }
@@ -67,25 +91,25 @@ public final class LogEvent {
         return "[" + Timestamper.now() + "] [" + this.type.name() + "]" + this.body;
     }
 
-    public static enum LogType {
+    public enum LogType {
         INFO, WARN, ERROR, DEBUG;
 
         public Color color() {
             switch (this) {
                 case INFO: {
-                    return App.THEME.getLogInfoColor();
+                    return UIManager.getColor("Console.LogType.info");
                 }
                 case WARN: {
-                    return App.THEME.getLogWarnColor();
+                    return UIManager.getColor("Console.LogType.warn");
                 }
                 case ERROR: {
-                    return App.THEME.getLogErrorColor();
+                    return UIManager.getColor("Console.LogType.error");
                 }
                 case DEBUG: {
-                    return App.THEME.getLogDebugColor();
+                    return UIManager.getColor("Console.LogType.debug");
                 }
                 default: {
-                    return App.THEME.getConsoleTextColor();
+                    return UIManager.getColor("Console.LogType.default");
                 }
             }
         }

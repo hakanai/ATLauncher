@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,32 +17,39 @@
  */
 package com.atlauncher.gui;
 
-import com.atlauncher.data.Account;
+import java.awt.Component;
+import java.awt.Dimension;
 
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.ListCellRenderer;
-import java.awt.Component;
-import java.awt.Dimension;
 
-@SuppressWarnings("serial")
-public class AccountsDropDownRenderer extends JLabel implements ListCellRenderer<Account> {
+import com.atlauncher.data.MicrosoftAccount;
+
+public class AccountsDropDownRenderer extends JLabel implements ListCellRenderer<MicrosoftAccount> {
     public AccountsDropDownRenderer() {
         setOpaque(true);
         setHorizontalAlignment(CENTER);
         setVerticalAlignment(CENTER);
-        setPreferredSize(new Dimension(200, 40));
+        setPreferredSize(new Dimension(200, 30));
         setIconTextGap(10);
     }
 
-    /*
-     * This method finds the image and text corresponding to the selected value and returns the
-     * label, set up to display the text and image.
+    /**
+     * This finds the image and text corresponding to the selected value and returns
+     * the label to be displayed in the bottom accounts selection dropdown.
+     *
+     * @param list The JList we're painting
+     * @param account the account we're rendering
+     * @param index The cells index
+     * @param isSelected True if the specified cell was selected
+     * @param cellHasFocus True if the specified cell has the focus
+     * @return A component whose paint() method will render the specified value
      */
-    @SuppressWarnings("rawtypes")
-    public Component getListCellRendererComponent(JList list, Account account, int index, boolean isSelected, boolean
-            cellHasFocus) {
+    @Override
+    public Component getListCellRendererComponent(JList<? extends MicrosoftAccount> list, MicrosoftAccount account,
+            int index, boolean isSelected, boolean cellHasFocus) {
         if (account == null) {
             return this;
         }
@@ -56,7 +63,7 @@ public class AccountsDropDownRenderer extends JLabel implements ListCellRenderer
         }
 
         ImageIcon icon = account.getMinecraftHead();
-        String username = account.getMinecraftUsername();
+        String username = account.minecraftUsername;
         setIcon(icon);
         setText(username);
         setFont(list.getFont());

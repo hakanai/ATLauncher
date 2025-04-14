@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,13 +17,13 @@
  */
 package com.atlauncher.utils;
 
-import com.atlauncher.App;
-
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import com.atlauncher.App;
+
 public final class Timestamper {
-    private static final SimpleDateFormat format = new SimpleDateFormat(App.settings.getDateFormat() + " HH:mm:ss a");
+    private static final SimpleDateFormat format = new SimpleDateFormat(App.settings.dateFormat + " HH:mm:ss a");
 
     public static String now() {
         return format.format(new Date());
@@ -33,7 +33,7 @@ public final class Timestamper {
         return format.format(date);
     }
 
-    public static void updateDateFormat() {
-        format.applyLocalizedPattern(App.settings.getDateFormat() + " HH:mm:ss a");
+    public static void updateDateFormat(String dateFormat) {
+        format.applyPattern(dateFormat + " HH:mm:ss a");
     }
 }

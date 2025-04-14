@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,17 +15,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.evnt.manager;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.swing.SwingUtilities;
 
 import com.atlauncher.evnt.listener.TabChangeListener;
 
-import javax.swing.SwingUtilities;
-import java.util.LinkedList;
-import java.util.List;
-
 public final class TabChangeManager {
-    private static final List<TabChangeListener> listeners = new LinkedList<TabChangeListener>();
+    private static final List<TabChangeListener> listeners = new ArrayList<>();
 
     public static synchronized void addListener(TabChangeListener listener) {
         listeners.add(listener);
@@ -35,13 +35,10 @@ public final class TabChangeManager {
         listeners.remove(listener);
     }
 
-    public static synchronized void post() {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                for (TabChangeListener listener : listeners) {
-                    listener.on();
-                }
+    public static synchronized void post(int index) {
+        SwingUtilities.invokeLater(() -> {
+            for (TabChangeListener listener : listeners) {
+                listener.onTabChange(index);
             }
         });
     }

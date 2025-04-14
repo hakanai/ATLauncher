@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,12 +18,24 @@
 package com.atlauncher.data.mojang.api;
 
 public class ProfileResponse {
-    private String name;
     private String id;
+    private String name;
     private boolean legacy;
     private boolean demo;
 
     public String getId() {
         return this.id;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    public boolean isLegacy() {
+        return this.legacy;
+    }
+
+    public boolean isDemo() {
+        return this.demo;
     }
 }

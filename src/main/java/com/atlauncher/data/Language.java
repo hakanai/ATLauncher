@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,104 +15,125 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
 package com.atlauncher.data;
 
-import com.atlauncher.App;
-import com.atlauncher.LogManager;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Properties;
 
-public enum Language {
-    INSTANCE, Language;
+import org.mini2Dx.gettext.GetText;
+import org.mini2Dx.gettext.PoFile;
 
-    private final Map<String, Properties> langs = new HashMap<String, Properties>();
-    private volatile String current;
+import com.atlauncher.App;
+import com.atlauncher.evnt.manager.RelocalizationManager;
+import com.atlauncher.managers.LogManager;
+import com.atlauncher.utils.Utils;
 
-    private Language() {
-        try {
-            this.load("English");
-        } catch (Exception ex) {
-            ex.printStackTrace(System.err);
-        }
+public class Language {
+    public final static List<Locale> locales = new ArrayList<>();
+    public final static Map<String, Locale> languages = new LinkedHashMap<>();
+    public final static List<Locale> localesWithoutFont = new ArrayList<>();
+    public final static List<Locale> localesWithoutTabFont = new ArrayList<>();
+    public static String selected = Locale.ENGLISH.getDisplayName();
+    public static Locale selectedLocale = Locale.ENGLISH;
+
+    // add in the languages we have support for
+    static {
+        locales.add(Locale.ENGLISH); // English
+        locales.add(new Locale("af", "ZA")); // Afrikaans
+        locales.add(new Locale("ar", "SA")); // Arabic
+        locales.add(new Locale("ca", "ES")); // Catalan
+        locales.add(new Locale("zh", "CN")); // Chinese Simplified
+        locales.add(new Locale("zh", "TW")); // Chinese Traditional
+        locales.add(new Locale("cs", "CZ")); // Czech
+        locales.add(new Locale("da", "DK")); // Danish
+        locales.add(new Locale("nl", "NL")); // Dutch
+        locales.add(new Locale("fi", "FI")); // Finnish
+        locales.add(new Locale("fr", "FR")); // French
+        locales.add(new Locale("de", "DE")); // German
+        locales.add(new Locale("el", "GR")); // Greek
+        locales.add(new Locale("he", "IL")); // Hebrew
+        locales.add(new Locale("hu", "HU")); // Hungarian
+        locales.add(new Locale("it", "IT")); // Italian
+        locales.add(new Locale("ja", "JP")); // Japanese
+        locales.add(new Locale("ko", "KR")); // Korean
+        locales.add(new Locale("no", "NO")); // Norwegian
+        locales.add(new Locale("pl", "PL")); // Polish
+        locales.add(new Locale("pt", "PT")); // Portuguese
+        locales.add(new Locale("pt", "BR")); // Portuguese, Brazilian
+        locales.add(new Locale("ro", "RO")); // Romanian
+        locales.add(new Locale("ru", "RU")); // Russian
+        locales.add(new Locale("sr", "SP")); // Serbian
+        locales.add(new Locale("es", "ES")); // Spanish
+        locales.add(new Locale("sv", "SE")); // Swedish
+        locales.add(new Locale("tr", "TR")); // Turkish
+        locales.add(new Locale("uk", "UA")); // Ukranian
+
+        localesWithoutFont.add(new Locale("ar", "SA"));
+        localesWithoutFont.add(new Locale("zh", "CN"));
+        localesWithoutFont.add(new Locale("zh", "TW"));
+        localesWithoutFont.add(new Locale("he", "IL"));
+        localesWithoutFont.add(new Locale("ja", "JP"));
+        localesWithoutFont.add(new Locale("ko", "KR"));
+
+        localesWithoutTabFont.add(new Locale("ar", "SA"));
+        localesWithoutTabFont.add(new Locale("zh", "CN"));
+        localesWithoutTabFont.add(new Locale("zh", "TW"));
+        localesWithoutTabFont.add(new Locale("he", "IL"));
+        localesWithoutTabFont.add(new Locale("el", "GR"));
+        localesWithoutTabFont.add(new Locale("ja", "JP"));
+        localesWithoutTabFont.add(new Locale("ko", "KR"));
     }
 
-    public static String[] available() {
-        File[] files = App.settings.getLanguagesDir().listFiles(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                return name.endsWith(".lang");
+    public static void init() throws IOException {
+        for (Locale locale : locales) {
+            if (Utils.getResourceInputStream(
+                    "/assets/lang/" + locale.getLanguage() + "-" + locale.getCountry() + ".po") != null) {
+                languages.put(locale.getDisplayName(), locale);
+                LogManager.debug("Loaded language " + locale.getDisplayName() + " with key of " + locale);
             }
-        });
-        String[] langs = new String[files.length];
-        for (int i = 0; i < files.length; i++) {
-            langs[i] = files[i].getName().substring(0, 1).toUpperCase() + files[i].getName().substring(1, files[i]
-                    .getName().lastIndexOf("."));
         }
-        return langs;
     }
 
-    public static synchronized String current() {
-        return INSTANCE.current;
-    }
-
-    public synchronized void load(String lang) throws IOException {
-        if (!this.langs.containsKey(lang)) {
-            Properties props = new Properties();
-            File langFile = new File(App.settings.getLanguagesDir(), lang.toLowerCase() + ".lang");
-            if (!langFile.exists()) {
-                LogManager.error("Language file " + langFile.getName() + " doesn't exist! Defaulting it inbuilt one!");
-                props.load(App.class.getResourceAsStream("/assets/lang/english.lang"));
-            } else {
-                props.load(new FileInputStream(langFile));
-            }
-            this.langs.put(lang, props);
-            LogManager.info("Loading Language: " + lang);
+    public static void setLanguage(String language) {
+        if (selected.equals(language)) {
+            return;
         }
 
-        this.current = lang;
-    }
+        Locale locale;
 
-    public synchronized void reload(String lang) throws IOException {
-        if (this.langs.containsKey(lang)) {
-            this.langs.remove(lang);
-        }
-
-        this.load(lang);
-    }
-
-    public synchronized String localize(String lang, String tag) {
-        if (this.langs.containsKey(lang)) {
-            Properties props = this.langs.get(lang);
-            if (props.containsKey(tag)) {
-                return props.getProperty(tag, tag);
-            } else {
-                if (lang.equalsIgnoreCase("English")) {
-                    return "Unknown language key " + tag;
-                } else {
-                    return this.localize("English", tag);
-                }
-            }
+        if (isLanguageByName(language)) {
+            LogManager.info("Language set to " + language);
+            locale = languages.get(language);
+            selected = language;
         } else {
-            return this.localize("English", tag);
+            LogManager.info("Unknown language " + language + ". Defaulting to " + Locale.ENGLISH.getDisplayName());
+            locale = Locale.ENGLISH;
+            selected = Locale.ENGLISH.getDisplayName();
         }
+
+        if (!locale.equals(Locale.ENGLISH)) {
+            try {
+                GetText.add(
+                        new PoFile(locale, App.class.getResourceAsStream(
+                                "/assets/lang/" + locale.getLanguage() + "-" + locale.getCountry() + ".po")));
+            } catch (IOException e) {
+                LogManager.logStackTrace("Failed loading language po file for " + language, e);
+                locale = Locale.ENGLISH;
+                selected = Locale.ENGLISH.getDisplayName();
+            }
+        }
+
+        selectedLocale = locale;
+
+        GetText.setLocale(locale);
+        RelocalizationManager.post();
     }
 
-    public synchronized String localize(String tag) {
-        return this.localize(this.current, tag);
-    }
-
-    public synchronized String localizeWithReplace(String tag, String replaceWith) {
-        return this.localize(this.current, tag).replace("%s", replaceWith);
-    }
-
-    public synchronized String getCurrent() {
-        return this.current;
+    public static boolean isLanguageByName(String language) {
+        return languages.containsKey(language);
     }
 }

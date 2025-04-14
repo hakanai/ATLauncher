@@ -1,6 +1,6 @@
 /*
  * ATLauncher - https://github.com/ATLauncher/ATLauncher
- * Copyright (C) 2013 ATLauncher
+ * Copyright (C) 2013-2022 ATLauncher
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,95 +17,120 @@
  */
 package com.atlauncher.gui.dialogs;
 
-import com.atlauncher.App;
-import com.atlauncher.LogManager;
-import com.atlauncher.data.Instance;
-import com.atlauncher.data.Language;
-import com.atlauncher.utils.Utils;
-
-import javax.swing.JButton;
-import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JTextField;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.Window;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
-public class RenameInstanceDialog extends JDialog {
-    private JPanel top;
-    private JPanel middle;
-    private JPanel bottom;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 
-    private JLabel instanceNameLabel;
+import org.mini2Dx.gettext.GetText;
+
+import com.atlauncher.App;
+import com.atlauncher.builders.HTMLBuilder;
+import com.atlauncher.constants.UIConstants;
+import com.atlauncher.data.Instance;
+import com.atlauncher.managers.DialogManager;
+import com.atlauncher.managers.InstanceManager;
+import com.atlauncher.managers.LogManager;
+import com.atlauncher.network.Analytics;
+import com.atlauncher.utils.Utils;
+
+public class RenameInstanceDialog extends JDialog {
+
     private JTextField instanceName;
 
-    private JButton saveButton;
+    private final Instance instance;
 
-    public RenameInstanceDialog(final Instance instance) {
-        super(null, Language.INSTANCE.localize("instance.renaminginstance"), ModalityType.APPLICATION_MODAL);
-        setSize(300, 150);
-        setLocationRelativeTo(null);
+    public RenameInstanceDialog(Instance instance) {
+        this(instance, App.launcher.getParent());
+    }
+
+    public RenameInstanceDialog(Instance instance, Window parent) {
+        super(parent, GetText.tr("Renaming Instance"), ModalityType.DOCUMENT_MODAL);
+
+        this.instance = instance;
+
+        Analytics.sendScreenView("Rename Instance Dialog");
+
+        setSize(320, 150);
+        setLocationRelativeTo(parent);
         setLayout(new BorderLayout());
-        setIconImage(Utils.getImage("/assets/image/Icon.png"));
+        setIconImage(Utils.getImage("/assets/image/icon.png"));
         setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         setResizable(false);
 
+        setupComponents();
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent arg0) {
+                close();
+            }
+        });
+    }
+
+    private void setupComponents() {
         // Top Panel Stuff
-        top = new JPanel();
-        top.add(new JLabel(Language.INSTANCE.localize("instance.renaminginstance")));
+        JPanel top = new JPanel();
+        top.add(new JLabel(GetText.tr("Renaming Instance")));
 
         // Middle Panel Stuff
-        middle = new JPanel();
+        JPanel middle = new JPanel();
         middle.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
 
         gbc.gridx = 0;
         gbc.gridy = 0;
+        gbc.insets = UIConstants.LABEL_INSETS;
         gbc.anchor = GridBagConstraints.BASELINE_TRAILING;
-        instanceNameLabel = new JLabel(Language.INSTANCE.localize("instance.name") + ": ");
+        JLabel instanceNameLabel = new JLabel(GetText.tr("Instance Name") + ": ");
         middle.add(instanceNameLabel, gbc);
 
         gbc.gridx++;
+        gbc.insets = UIConstants.FIELD_INSETS;
         gbc.anchor = GridBagConstraints.BASELINE_LEADING;
         instanceName = new JTextField(16);
-        instanceName.setText(instance.getName());
+        instanceName.setText(this.instance.launcher.name);
         middle.add(instanceName, gbc);
 
         // Bottom Panel Stuff
-        bottom = new JPanel();
+        JPanel bottom = new JPanel();
         bottom.setLayout(new FlowLayout());
-        saveButton = new JButton(Language.INSTANCE.localize("common.save"));
-        saveButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                if (App.settings.isInstance(instanceName.getText())) {
-                    JOptionPane.showMessageDialog(RenameInstanceDialog.this, Language.INSTANCE.localizeWithReplace
-                            ("instance.alreadyinstance", instanceName.getText()), Language.INSTANCE.localize("common"
-                            + ".error"), JOptionPane.ERROR_MESSAGE);
-                } else if (instanceName.getText().replaceAll("[^A-Za-z0-9]", "").length() == 0) {
-                    JOptionPane.showMessageDialog(App.settings.getParent(), "<html><p align=\"center\">" + Language
-                            .INSTANCE.localize("common.error") + "<br/><br/>" + Language.INSTANCE.localizeWithReplace
-                            ("instance.invalidname", instanceName.getText()) + "</p></html>", Language.INSTANCE
-                            .localize("common.error"), JOptionPane.ERROR_MESSAGE);
-                } else {
-                    if (instance.rename(instanceName.getText())) {
-                        App.settings.saveInstances();
-                        App.settings.reloadInstancesPanel();
-                    } else {
-                        LogManager.error("Unknown Error Occured While Renaming Instance!");
-                        JOptionPane.showMessageDialog(RenameInstanceDialog.this, "<html><p align=\"center\">" +
-                                Language.INSTANCE.localizeWithReplace("instance" + "" +
-                                        ".errorrenaming", instance.getName() + "<br/><br/>") + "</p></html>",
-                                Language.INSTANCE.localize("common.error"), JOptionPane.ERROR_MESSAGE);
-                    }
-                    close();
+        JButton saveButton = new JButton(GetText.tr("Save"));
+        saveButton.addActionListener(e -> {
+            if (InstanceManager.isInstance(instanceName.getText())) {
+                DialogManager.okDialog().setParent(RenameInstanceDialog.this).setTitle(GetText.tr("Error"))
+                        .setContent(
+                                GetText.tr("There is already an instance called {0}.<br/><br/>Rename it and try again.",
+                                        instanceName.getText()))
+                        .setType(DialogManager.ERROR).show();
+            } else if (instanceName.getText().replaceAll("[^A-Za-z0-9]", "").isEmpty()) {
+                DialogManager.okDialog().setTitle(GetText.tr("Error"))
+                        .setContent(
+                                new HTMLBuilder().center()
+                                        .text(GetText.tr("Error") + "<br/><br/>" + GetText.tr(
+                                                "The name {0} is invalid. It must contain at least 1 letter or number.",
+                                                instanceName.getText()))
+                                        .build())
+                        .setType(DialogManager.ERROR).show();
+            } else {
+                if (!instance.rename(instanceName.getText())) {
+                    LogManager.error("Unknown Error Occurred While Renaming Instance!");
+                    DialogManager.okDialog().setParent(RenameInstanceDialog.this).setTitle(GetText.tr("Error"))
+                            .setContent(new HTMLBuilder().center().text(GetText.tr(
+                                    "An error occurred renaming the instance.<br/><br/>Please check the console and try again."))
+                                    .build())
+                            .setType(DialogManager.ERROR).show();
                 }
+                close();
             }
         });
         bottom.add(saveButton);
@@ -113,14 +138,6 @@ public class RenameInstanceDialog extends JDialog {
         add(top, BorderLayout.NORTH);
         add(middle, BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
-
-        addWindowListener(new WindowAdapter() {
-            public void windowClosing(WindowEvent arg0) {
-                close();
-            }
-        });
-
-        setVisible(true);
     }
 
     private void close() {
